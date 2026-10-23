@@ -480,6 +480,13 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // 二次启动：唤起设置窗口提示已有实例在运行
+            if let Some(win) = app.get_webview_window(SETTINGS) {
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+        }))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
