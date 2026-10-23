@@ -1,0 +1,28 @@
+# Build outputs
+node_modules/
+dist/
+dist-ssr/
+target/
+*.local
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local env / secrets
+.env
+.env.*
+*.key
+
+# Tauri
+src-tauri/gen/
