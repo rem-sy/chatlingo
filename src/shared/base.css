@@ -1,0 +1,50 @@
+:root {
+  --bg: #1e1f24;
+  --bg-soft: #26272e;
+  --bg-hover: #31323b;
+  --border: #3a3b45;
+  --text: #e8e9ed;
+  --text-dim: #9a9ba6;
+  --accent: #4f8cff;
+  --accent-soft: rgba(79, 140, 255, 0.15);
+  --ok: #3ecf8e;
+  --err: #ff6b6b;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif;
+  font-size: 14px;
+  user-select: none;
+}
+
+button {
+  font-family: inherit;
+  background: var(--bg-soft);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 12.5px;
+}
+button:hover { background: var(--bg-hover); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: 0.5; cursor: default; }
+
+input[type='text'], input[type='password'], textarea, select {
+  font-family: inherit;
+  background: var(--bg-soft);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  outline: none;
+}
+input:focus, textarea:focus { border-color: var(--accent); }

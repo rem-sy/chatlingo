@@ -26,3 +26,9 @@ Thumbs.db
 
 # Tauri
 src-tauri/gen/
+
+# Local artifacts
+err*.log
+quickbar-screenshot.png
+webview-data/
+pnpm-files/e* *pnpm*

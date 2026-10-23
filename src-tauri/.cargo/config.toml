@@ -1,0 +1,4 @@
+# WebView2 在中文路径下创建窗口会报 os error 5（拒绝访问），
+# 因此构建产物必须放在纯 ASCII 路径。详见 README「已知问题」。
+[build]
+target-dir = "C:/chatlingo-target"
