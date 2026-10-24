@@ -1,6 +1,6 @@
-mod config;
-mod detect;
-mod engines;
+pub mod config;
+pub mod detect;
+pub mod engines;
 
 use config::AppConfig;
 use engines::openai::OpenAiCompatEngine;
@@ -81,13 +81,14 @@ fn create_windows(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         "panel",
         WebviewWindowBuilder::new(app, PANEL, WebviewUrl::App("panel.html".into()))
             .title("ChatLingo Panel")
-            .inner_size(460.0, 520.0)
+            .inner_size(440.0, 480.0)
             .decorations(false)
             .always_on_top(true)
             .skip_taskbar(true)
             .resizable(true)
             .visible(false)
             .shadow(true)
+            .transparent(true)
             .build()
     );
     Ok(())
@@ -145,6 +146,13 @@ async fn run_translation(
     direction: Direction,
 ) -> Result<String, String> {
     let cfg = state(app).config.lock().unwrap().clone();
+    eprintln!(
+        "[chatlingo] engine: url={} model={} key_len={} key_tail={:?}",
+        cfg.engine.base_url,
+        cfg.engine.model,
+        cfg.engine.api_key.len(),
+        cfg.engine.api_key.chars().rev().take(6).collect::<String>()
+    );
     if cfg.engine.api_key.is_empty() {
         return Err("未配置 API Key，请先在设置中填写".into());
     }
@@ -172,12 +180,20 @@ async fn run_translation(
                     let _ = win.emit("panel-chunk", serde_json::json!({ "text": chunk }));
                 }
             }
-            Err(e) => return Err(e),
+            Err(e) => {
+                eprintln!("[chatlingo] translate error: {e}");
+                return Err(e);
+            }
         }
     }
     if full.trim().is_empty() {
         return Err("引擎返回了空结果".into());
     }
+    eprintln!(
+        "[chatlingo] translate ok: {} chars, direction={:?}",
+        full.chars().count(),
+        direction
+    );
     Ok(full)
 }
 
@@ -237,6 +253,13 @@ fn open_settings(app: AppHandle) {
 fn panel_ready() {}
 
 #[tauri::command]
+fn minimize_panel(app: AppHandle) {
+    if let Some(win) = app.get_webview_window(PANEL) {
+        let _ = win.minimize();
+    }
+}
+
+#[tauri::command]
 fn copy_text(app: AppHandle, text: String) -> Result<(), String> {
     write_clipboard(&app, &text)
 }
@@ -291,8 +314,7 @@ async fn submit_input(app: AppHandle, text: String, target: String, id: u64) -> 
 
 /// 翻译当前剪贴板内容（输出方向）：热键触发或手动调用。
 #[tauri::command]
-async fn translate_clipboard(app: AppHandle, manual: bool) -> Result<(), ()> {
-    let cfg = state(&app).config.lock().unwrap().clone();
+async fn translate_clipboard(app: AppHandle, manual: bool) -> Result<(), ()> {    let cfg = state(&app).config.lock().unwrap().clone();
     if !manual && !cfg.clipboard.monitor {
         return Ok(());
     }
@@ -531,6 +553,7 @@ pub fn run() {
             test_engine,
             hide_quickbar,
             hide_panel,
+            minimize_panel,
             open_settings,
             panel_ready,
             copy_text,

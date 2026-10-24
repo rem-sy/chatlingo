@@ -71,16 +71,36 @@ impl super::TranslationEngine for OpenAiCompatEngine {
                     { "role": "user", "content": params.text }
                 ]
             });
-            let resp = match engine
-                .client
-                .post(&url)
-                .bearer_auth(&engine.api_key)
-                .json(&body)
-                .send()
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => { yield Err(format!("网络错误: {e}")); return; }
+            let mut attempt = 0;
+            let resp = loop {
+                attempt += 1;
+                match engine
+                    .client
+                    .post(&url)
+                    .bearer_auth(&engine.api_key)
+                    .header("User-Agent", "ChatLingo/0.1")
+                    .json(&body)
+                    .send()
+                    .await
+                {
+                    Ok(r) => {
+                        // 网关偶发 401/5xx：自动重试一次
+                        let s = r.status();
+                        if attempt < 2 && (s.as_u16() == 401 || s.is_server_error()) {
+                            tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                            continue;
+                        }
+                        break r;
+                    }
+                    Err(e) => {
+                        if attempt < 2 {
+                            tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                            continue;
+                        }
+                        yield Err(format!("网络错误: {e}"));
+                        return;
+                    }
+                }
             };
             let status = resp.status();
             if !status.is_success() {

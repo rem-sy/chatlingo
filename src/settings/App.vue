@@ -6,7 +6,7 @@
       <h2>翻译引擎（OpenAI 兼容）</h2>
       <div class="form-row">
         <label>Base URL</label>
-        <input v-model="cfg.engine.baseURL" type="text" placeholder="https://api.deepseek.com/v1" />
+        <input v-model="cfg.engine.baseUrl" type="text" placeholder="https://api.deepseek.com/v1" />
       </div>
       <div class="form-row">
         <label>API Key</label>
@@ -93,7 +93,7 @@ const langsList = computed(() =>
 
 function defaultCfg(): AppConfig {
   return {
-    engine: { baseURL: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat' },
+    engine: { baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat' },
     quickbar: { hotkey: 'alt+t', targetLangs: ['en', 'ja'], defaultTarget: 'en', autoCopy: true, autoPaste: true },
     clipboard: { monitor: true, minLength: 20, translateHotkey: 'alt+y' },
     outputTarget: 'zh-CN',

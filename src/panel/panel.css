@@ -1,11 +1,18 @@
+html {
+  background: transparent;
+}
+
 .panel {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  /* 半透明背景：约 62% 透明度，不挡屏幕内容 */
+  background: rgba(30, 31, 36, 0.38);
+  border: 1px solid rgba(90, 92, 105, 0.55);
   border-radius: 10px;
   overflow: hidden;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
 .panel-head {
@@ -13,8 +20,8 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-soft);
+  border-bottom: 1px solid rgba(90, 92, 105, 0.4);
+  background: rgba(38, 39, 46, 0.55);
   cursor: default;
 }
 .badge {

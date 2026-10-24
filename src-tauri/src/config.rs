@@ -4,8 +4,10 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EngineConfig {
-    #[serde(default = "default_base_url")]
+    /// 兼容历史配置里的 "baseURL" 写法
+    #[serde(default = "default_base_url", alias = "baseURL")]
     pub base_url: String,
     #[serde(default)]
     pub api_key: String,
@@ -27,6 +29,7 @@ impl Default for EngineConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct QuickbarConfig {
     #[serde(default = "default_hotkey")]
     pub hotkey: String,
@@ -66,6 +69,7 @@ impl Default for QuickbarConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ClipboardConfig {
     #[serde(default = "yes")]
     pub monitor: bool,
@@ -141,8 +145,15 @@ pub fn config_path(app: &AppHandle) -> PathBuf {
 
 pub fn load_config(app: &AppHandle) -> AppConfig {
     let path = config_path(app);
-    match fs::read_to_string(&path) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+    let raw = fs::read_to_string(&path);
+    eprintln!("[chatlingo] config path: {}", path.display());
+    eprintln!("[chatlingo] config raw: {:?}", raw.as_deref().map(|s| &s[..s.len().min(300)]));
+    match raw {
+        Ok(content) => {
+            let cfg: AppConfig = serde_json::from_str(&content).unwrap_or_default();
+            eprintln!("[chatlingo] config parsed engine.base_url={}", cfg.engine.base_url);
+            cfg
+        }
         Err(_) => AppConfig::default(),
     }
 }

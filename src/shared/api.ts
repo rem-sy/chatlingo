@@ -4,7 +4,7 @@ export const invoke = <T>(cmd: string, args?: Record<string, unknown>): Promise<
   tauriInvoke<T>(cmd, args)
 
 export interface EngineConfig {
-  baseURL: string
+  baseUrl: string
   apiKey: string
   model: string
 }

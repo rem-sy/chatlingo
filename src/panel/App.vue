@@ -1,9 +1,10 @@
 <template>
   <div class="panel">
-    <div class="panel-head">
+    <div class="panel-head" data-tauri-drag-region>
       <span class="badge">Agent 输出 → {{ outputLabel }}</span>
       <span class="status">{{ statusText }}</span>
-      <div class="spacer"></div>
+      <div class="spacer" data-tauri-drag-region></div>
+      <button class="mini" title="最小化" @click="minimize">—</button>
       <button class="mini" title="复制译文" @click="copyTranslation">复制</button>
       <button class="mini" title="关闭" @click="close">×</button>
     </div>
@@ -68,5 +69,8 @@ function copyTranslation() {
 }
 function close() {
   invoke('hide_panel')
+}
+function minimize() {
+  invoke('minimize_panel')
 }
 </script>
