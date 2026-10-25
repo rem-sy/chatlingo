@@ -85,7 +85,9 @@
       <h2>翻译面板</h2>
       <div class="form-row">
         <label>呼出快捷键</label>
-        <input v-model="cfg.quickbar.hotkey" type="text" placeholder="alt+t" />
+        <input :value="recording ? '请按下组合键…' : cfg.quickbar.hotkey" type="text" readonly :class="{ recording }" @focus="$event.target.blur()" />
+        <button @click="toggleRecord">{{ recording ? '取消' : '点击录入' }}</button>
+        <span class="hint">{{ hotkeyErr || '点击「点击录入」后直接按组合键（如 Alt+T）' }}</span>
       </div>
       <div class="form-row">
         <label>译文自动回填</label>
@@ -264,6 +266,60 @@ async function toggleAutostart() {
     autostartErr.value = '设置失败，请重试'
     autostart.value = !autostart.value
   }
+}
+
+// ---------- 快捷键录入 ----------
+const recording = ref(false)
+const hotkeyErr = ref('')
+
+function toggleRecord() {
+  recording.value = !recording.value
+  hotkeyErr.value = ''
+}
+
+function keyFromEvent(e: KeyboardEvent): string | null {
+  const code = e.code
+  if (/^Key([A-Z])$/.test(code)) return code.slice(3).toLowerCase()
+  if (/^Digit(\d)$/.test(code)) return code.slice(5)
+  if (/^F(\d{1,2})$/.test(code)) return code.toLowerCase()
+  const map: Record<string, string> = {
+    Comma: ',', Period: '.', Slash: '/', Space: 'space',
+    ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+    Semicolon: ';', Quote: "'", BracketLeft: '[', BracketRight: ']',
+    Backslash: '\\', Minus: '-', Equal: '=', Backquote: '`',
+  }
+  return map[code] ?? null
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', (e) => {
+    if (!recording.value) return
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.key === 'Escape') {
+      recording.value = false
+      return
+    }
+    // 只按了修饰键时继续等待
+    if (['Alt', 'Control', 'Shift', 'Meta'].includes(e.key)) return
+    const key = keyFromEvent(e)
+    if (!key) {
+      hotkeyErr.value = `不支持的按键：${e.code}`
+      return
+    }
+    if (!e.altKey && !e.ctrlKey && !e.metaKey) {
+      hotkeyErr.value = '请搭配 Alt / Ctrl / Shift 修饰键，避免占用单键'
+      return
+    }
+    const parts: string[] = []
+    if (e.ctrlKey) parts.push('ctrl')
+    if (e.altKey) parts.push('alt')
+    if (e.shiftKey) parts.push('shift')
+    if (e.metaKey) parts.push('meta')
+    parts.push(key)
+    cfg.value.quickbar.hotkey = parts.join('+')
+    recording.value = false
+  })
 }
 
 async function save() {

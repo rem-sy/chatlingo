@@ -49,6 +49,13 @@ footer {
   gap: 12px;
   padding: 12px 4px;
 }
+input.recording {
+  border-color: var(--accent);
+  color: var(--text-dim);
+  animation: pulse 1s infinite;
+}
+@keyframes pulse { 50% { opacity: 0.55; } }
+
 .saved { color: var(--ok); font-size: 13px; }
 .err { color: var(--err); font-size: 13px; }
 body { overflow-y: auto; }
