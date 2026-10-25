@@ -262,9 +262,14 @@ async function applyDataDir(restore = false) {
   dataDirMsg.value = ''
   try {
     const path = restore ? '' : dataDir.value.trim()
-    await invoke('set_data_dir', { path })
+    if (!restore && !path) {
+      dataDirOk.value = false
+      dataDirMsg.value = '请先点「浏览…」选择目录，或手动填写路径'
+      return
+    }
+    const res = await invoke<{ ok: boolean; restored?: boolean; dir?: string }>('set_data_dir', { path })
     dataDirOk.value = true
-    dataDirMsg.value = restore ? '已恢复默认目录并迁移数据' : '数据目录已应用并完成迁移'
+    dataDirMsg.value = res.restored ? '已恢复默认目录并迁移数据' : `已迁移到：${res.dir ?? path}`
     await refreshDataInfo()
   } catch (e) {
     dataDirOk.value = false

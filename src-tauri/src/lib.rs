@@ -507,11 +507,15 @@ fn open_history(app: AppHandle) {
 #[tauri::command]
 async fn pick_folder(app: AppHandle) -> Result<Value, String> {
     use tauri_plugin_dialog::DialogExt;
-    let folder = app
-        .dialog()
-        .file()
-        .set_title("选择数据存储目录")
-        .blocking_pick_folder();
+    let app = app.clone();
+    let folder = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("选择数据存储目录")
+            .blocking_pick_folder()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
     match folder {
         Some(p) => Ok(serde_json::json!({ "path": p.to_string() })),
         None => Ok(serde_json::json!({ "path": null })),
@@ -532,6 +536,7 @@ fn get_data_info(app: AppHandle) -> Value {
 /// 设置/清除自定义数据目录，并把现有数据迁移过去（便携模式下不可用）
 #[tauri::command]
 fn set_data_dir(app: AppHandle, path: String) -> Result<Value, String> {
+    eprintln!("[chatlingo] set_data_dir called: path={path:?}");
     if config::is_portable() {
         return Err("便携模式下数据目录固定在 exe 旁，无法自定义".into());
     }
