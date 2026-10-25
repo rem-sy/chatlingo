@@ -6,19 +6,6 @@
 
 [![Status](https://img.shields.io/badge/status-v0.1.9%20usable-green)](docs/03-开发计划.md) ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey) ![Stack](https://img.shields.io/badge/stack-Tauri%202%20%7C%20Rust%20%7C%20Vue%203-orange) ![License](https://img.shields.io/badge/license-MIT-blue)
 
-## 开发动机
-
-我想**纯英文使用 ChatGPT**。
-
-用过一段时间 AI 对话后我确认了一件事：同样的模型，英文提问得到的回答质量普遍更好——推理更稳、术语更准、长上下文表现更佳。于是我决定把对话语言整体切到英文。但真用起来发现代价不小：
-
-- 用英文写需求，表达效率远低于母语，写出来的 prompt 常常词不达意，反而在浪费模型能力；
-- 模型用英文长篇回复时，阅读速度和理解深度又明显打折。
-
-也就是说，「用英文对话」的最优解不是「我写英文、读英文」，而是：**我用中文思考，模型收到地道的英文；模型输出英文，我读地道的中文。** 中间的翻译应该像不存在一样。
-
-市面上的翻译工具（pot、CopyTranslator、沉浸式翻译……）都在解决「把外文翻给我看」，没有一个针对「和 AI 对话」这个场景做完整流水线。于是我写了 ChatLingo——先是自用，顺手开源。
-
 ## 这是什么
 
 **ChatLingo 把「翻译提问 → 粘贴 → 翻译回复 → 粘贴」这个循环压缩到一次快捷键。** 它是一个常驻系统托盘的桌面小工具：
