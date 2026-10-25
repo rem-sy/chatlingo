@@ -35,6 +35,11 @@
         <label></label>
         <span class="hint">大模型请求失败时自动用 DeepL 翻译；每月免费 50 万字符</span>
       </div>
+      <div class="form-row">
+        <label>双引擎对比</label>
+        <input type="checkbox" v-model="cfg.compareMode" />
+        <span class="hint">输出方向同时用大模型和 DeepL 翻译，面板并列展示择优</span>
+      </div>
     </section>
 
     <section>
@@ -107,6 +112,7 @@ function defaultCfg(): AppConfig {
   return {
     engine: { baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat' },
     deepl: { apiKey: '' },
+    compareMode: false,
     quickbar: { hotkey: 'alt+t', targetLangs: ['en', 'ja'], defaultTarget: 'en', autoCopy: true, autoPaste: true },
     clipboard: { monitor: true, minLength: 20, translateHotkey: 'alt+y' },
     outputTarget: 'zh-CN',

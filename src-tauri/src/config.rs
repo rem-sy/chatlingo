@@ -112,6 +112,9 @@ pub struct AppConfig {
     pub engine: EngineConfig,
     #[serde(default)]
     pub deepl: DeeplConfig,
+    /// 输出方向：大模型与 DeepL 同时翻译、面板并列对比
+    #[serde(default)]
+    pub compare_mode: bool,
     #[serde(default)]
     pub quickbar: QuickbarConfig,
     #[serde(default)]
@@ -133,6 +136,7 @@ impl Default for AppConfig {
                 model: default_model(),
             },
             deepl: DeeplConfig::default(),
+            compare_mode: false,
             quickbar: QuickbarConfig {
                 hotkey: default_hotkey(),
                 target_langs: default_target_langs(),

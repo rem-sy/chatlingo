@@ -13,10 +13,53 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
+/// 译文 LRU 缓存（key = hash(text + target + direction)）
+struct TranslationCache {
+    map: std::collections::HashMap<u64, String>,
+    order: std::collections::VecDeque<u64>,
+    cap: usize,
+}
+
+impl TranslationCache {
+    fn new() -> Self {
+        TranslationCache {
+            map: std::collections::HashMap::new(),
+            order: std::collections::VecDeque::new(),
+            cap: 200,
+        }
+    }
+    fn get(&mut self, k: u64) -> Option<&String> {
+        if self.map.contains_key(&k) {
+            // 提升为最近使用
+            if let Some(pos) = self.order.iter().position(|&x| x == k) {
+                self.order.remove(pos);
+                self.order.push_back(k);
+            }
+            self.map.get(&k)
+        } else {
+            None
+        }
+    }
+    fn put(&mut self, k: u64, v: String) {
+        if self.map.insert(k, v).is_none() {
+            self.order.push_back(k);
+            while self.order.len() > self.cap {
+                if let Some(old) = self.order.pop_front() {
+                    self.map.remove(&old);
+                }
+            }
+        }
+    }
+}
+
 struct AppState {
     config: Mutex<AppConfig>,
     /// 我们自己写入剪贴板的内容 hash，防止监听死循环
     written_hashes: Mutex<HashSet<u64>>,
+    /// 译文缓存
+    cache: Mutex<TranslationCache>,
+    /// 进行中的翻译请求（同 key 合并等待）
+    in_flight: Mutex<HashSet<u64>>,
 }
 
 const QUICKBAR: &str = "quickbar";
@@ -152,6 +195,48 @@ async fn run_translation(
         return Err("未配置任何翻译引擎，请先在设置中填写".into());
     }
 
+    // ---- 译文缓存 ----
+    let cache_key = default_hash(&format!("{}|{}|{:?}", text, target, direction));
+    if let Some(cached) = state(app).cache.lock().unwrap().get(cache_key).cloned() {
+        eprintln!("[chatlingo] cache hit ({} chars)", cached.chars().count());
+        if let Some(win) = app.get_webview_window(window) {
+            if window == QUICKBAR {
+                let id = ACTIVE_REQ.load(std::sync::atomic::Ordering::SeqCst);
+                let _ = win.emit("quickbar-chunk", serde_json::json!({ "id": id, "text": cached }));
+            } else {
+                let _ = win.emit("panel-chunk", serde_json::json!({ "text": cached }));
+            }
+        }
+        return Ok(cached);
+    }
+    // ---- 请求合并：同内容翻译进行中 → 等它完成后走缓存 ----
+    let already_in_flight = {
+        let st = state(app);
+        let mut infl = st.in_flight.lock().unwrap();
+        if infl.contains(&cache_key) {
+            true
+        } else {
+            infl.insert(cache_key);
+            false
+        }
+    };
+    if already_in_flight {
+        for _ in 0..200 {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            let cached = state(app).cache.lock().unwrap().get(cache_key).cloned();
+            if let Some(cached) = cached {
+                if let Some(win) = app.get_webview_window(window) {
+                    let _ = win.emit("panel-chunk", serde_json::json!({ "text": cached }));
+                }
+                return Ok(cached);
+            }
+            let still = state(app).in_flight.lock().unwrap().contains(&cache_key);
+            if !still {
+                break; // 对方失败了，自己再翻一次
+            }
+        }
+    }
+
     let mut result = if llm_ready {
         eprintln!(
             "[chatlingo] engine: primary=LLM url={} model={}",
@@ -212,6 +297,11 @@ async fn run_translation(
             result = Ok(full);
         }
     }
+    // 成功 → 写入缓存；无论如何清掉 in-flight 标记
+    if let Ok(translated) = &result {
+        state(app).cache.lock().unwrap().put(cache_key, translated.clone());
+    }
+    state(app).in_flight.lock().unwrap().remove(&cache_key);
     result
 }
 
@@ -438,13 +528,19 @@ pub async fn translate_output(app: AppHandle, text: String, cfg: AppConfig) {
         return;
     }
     let panel = app.get_webview_window(PANEL);
+    // 对比模式：LLM 与 DeepL 并行翻译，面板并列展示
+    let compare = cfg.compare_mode && !cfg.engine.api_key.is_empty() && !cfg.deepl.api_key.is_empty();
     if let Some(p) = &panel {
         let _ = p.emit(
             "panel-start",
-            serde_json::json!({ "original": trimmed, "outputTarget": cfg.output_target }),
+            serde_json::json!({ "original": trimmed, "outputTarget": cfg.output_target, "compare": compare }),
         );
     }
     show_panel_bottom_right(&app);
+    if compare {
+        translate_compare(&app, trimmed, cfg.output_target.clone()).await;
+        return;
+    }
     let result = run_translation(&app, PANEL, trimmed, cfg.output_target.clone(), Direction::Output).await;
     if let Some(p) = &panel {
         let _ = p.emit(
@@ -453,6 +549,106 @@ pub async fn translate_output(app: AppHandle, text: String, cfg: AppConfig) {
                 Ok(_) => serde_json::json!({ "ok": true }),
                 Err(e) => serde_json::json!({ "ok": false, "error": e }),
             },
+        );
+    }
+}
+
+/// 对比模式：LLM 与 DeepL 同时翻译，chunk 带 engine 标签推送
+async fn translate_compare(app: &AppHandle, text: String, target: String) {
+    use futures_util::StreamExt;
+    let cfg = state(app).config.lock().unwrap().clone();
+    eprintln!("[chatlingo] compare mode: LLM ∥ DeepL → {target}");
+
+    let llm_cfg = cfg.clone();
+    let llm_text = text.clone();
+    let llm_target = target.clone();
+    let llm_app = app.clone();
+    let llm_task = tauri::async_runtime::spawn(async move {
+        let engine = OpenAiCompatEngine::new(llm_cfg.engine.base_url, llm_cfg.engine.api_key, llm_cfg.engine.model);
+        let mut stream = engine.translate_stream(TranslateParams {
+            text: llm_text,
+            target_lang: llm_target,
+            direction: Direction::Output,
+        });
+        let mut full = String::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(chunk) => {
+                    full.push_str(&chunk);
+                    if let Some(w) = llm_app.get_webview_window(PANEL) {
+                        let _ = w.emit("panel-chunk", serde_json::json!({ "engine": "llm", "text": chunk }));
+                    }
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        if full.trim().is_empty() {
+            Err("引擎返回了空结果".into())
+        } else {
+            Ok(full)
+        }
+    });
+
+    let deepl_cfg = cfg.clone();
+    let deepl_text = text.clone();
+    let deepl_target = target.clone();
+    let deepl_app = app.clone();
+    let deepl_task = tauri::async_runtime::spawn(async move {
+        let engine = engines::deepl::DeeplEngine::new(deepl_cfg.deepl.api_key);
+        let mut stream = engine.translate_stream(TranslateParams {
+            text: deepl_text,
+            target_lang: deepl_target,
+            direction: Direction::Output,
+        });
+        let mut full = String::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(chunk) => {
+                    full.push_str(&chunk);
+                    if let Some(w) = deepl_app.get_webview_window(PANEL) {
+                        let _ = w.emit("panel-chunk", serde_json::json!({ "engine": "deepl", "text": chunk }));
+                    }
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        if full.trim().is_empty() {
+            Err("引擎返回了空结果".into())
+        } else {
+            Ok(full)
+        }
+    });
+
+    let (llm_res, deepl_res) = tokio::join!(llm_task, deepl_task);
+    eprintln!(
+        "[chatlingo] compare done: llm={} deepl={}",
+        matches!(&llm_res, Ok(Ok(_))),
+        matches!(&deepl_res, Ok(Ok(_)))
+    );
+    let llm_err = match llm_res {
+        Ok(Ok(_)) => None,
+        Ok(Err(e)) => Some(e),
+        Err(e) => Some(e.to_string()),
+    };
+    let deepl_err = match deepl_res {
+        Ok(Ok(_)) => None,
+        Ok(Err(e)) => Some(e),
+        Err(e) => Some(e.to_string()),
+    };
+    if let Some(p) = app.get_webview_window(PANEL) {
+        let mut errs = vec![];
+        if let Some(e) = llm_err {
+            errs.push(format!("LLM: {e}"));
+        }
+        if let Some(e) = deepl_err {
+            errs.push(format!("DeepL: {e}"));
+        }
+        let _ = p.emit(
+            "panel-done",
+            serde_json::json!({
+                "ok": errs.len() < 2,
+                "error": if errs.is_empty() { serde_json::Value::Null } else { serde_json::json!(errs.join("；")) },
+            }),
         );
     }
 }
@@ -650,6 +846,8 @@ pub fn run() {
             app.manage(AppState {
                 config: Mutex::new(cfg),
                 written_hashes: Mutex::new(HashSet::new()),
+                cache: Mutex::new(TranslationCache::new()),
+                in_flight: Mutex::new(HashSet::new()),
             });
             let steps: Vec<(&str, Box<dyn FnOnce(&AppHandle) -> Result<(), Box<dyn std::error::Error>>>)> =
                 vec![];

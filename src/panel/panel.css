@@ -57,6 +57,38 @@ button.mini {
   padding: 4px 8px;
 }
 
+.compare-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.compare-col {
+  border: 1px solid rgba(90, 92, 105, 0.35);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(20, 21, 25, 0.35);
+}
+.compare-tag {
+  display: inline-block;
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.compare-tag.llm {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.compare-tag.deepl {
+  color: #3ecf8e;
+  background: rgba(62, 207, 142, 0.12);
+}
+.translation.plain {
+  font-size: 13.5px;
+  white-space: pre-wrap;
+}
+
 details.original summary {
   cursor: pointer;
   font-size: 12px;

@@ -16,6 +16,7 @@ export interface DeeplConfig {
 export interface AppConfig {
   engine: EngineConfig
   deepl: DeeplConfig
+  compareMode: boolean
   quickbar: {
     hotkey: string
     targetLangs: string[]
