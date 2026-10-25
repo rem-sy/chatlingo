@@ -119,6 +119,23 @@
         <input type="checkbox" v-model="autostart" @change="toggleAutostart" />
         <span class="hint">{{ autostartErr || '开机后自动驻留托盘' }}</span>
       </div>
+      <div class="form-row">
+        <label>数据目录</label>
+        <input v-model="dataDir" type="text" placeholder="留空 = 跟随用户配置文件 (%APPDATA%)" :disabled="dataInfo?.portable" />
+        <button :disabled="dataInfo?.portable || applyingDir" @click="applyDataDir">{{ applyingDir ? '迁移中…' : '应用' }}</button>
+        <button v-if="dataInfo?.custom" @click="applyDataDir(true)">恢复默认</button>
+      </div>
+      <div class="form-row">
+        <label></label>
+        <span class="hint">
+          当前：{{ dataInfo?.dir }}（{{ dataInfo?.portable ? '便携模式' : dataInfo?.custom ? '自定义' : '跟随用户配置文件' }}）。
+          应用后配置与历史迁移到新目录。便携模式：在 exe 同目录创建名为 chatlingo.portable 的空文件即可，数据将存于 exe 旁 data/ 子目录
+        </span>
+      </div>
+      <div class="form-row" v-if="dataDirMsg">
+        <label></label>
+        <span class="test-result" :class="dataDirOk ? 'ok' : 'bad'">{{ dataDirMsg }}</span>
+      </div>
     </section>
 
     <footer>
@@ -198,7 +215,46 @@ onMounted(async () => {
   } catch {
     autostartErr.value = '状态读取失败'
   }
+  await refreshDataInfo()
 })
+
+interface DataInfo {
+  dir: string
+  portable: boolean
+  custom: boolean
+}
+const dataInfo = ref<DataInfo | null>(null)
+const dataDir = ref('')
+const applyingDir = ref(false)
+const dataDirMsg = ref('')
+const dataDirOk = ref(false)
+
+async function refreshDataInfo() {
+  try {
+    dataInfo.value = await invoke<DataInfo>('get_data_info')
+    if (!dataInfo.value.portable && !dataInfo.value.custom) dataDir.value = ''
+    else if (dataInfo.value.custom) dataDir.value = dataInfo.value.dir
+  } catch {
+    /* ignore */
+  }
+}
+
+async function applyDataDir(restore = false) {
+  applyingDir.value = true
+  dataDirMsg.value = ''
+  try {
+    const path = restore ? '' : dataDir.value.trim()
+    await invoke('set_data_dir', { path })
+    dataDirOk.value = true
+    dataDirMsg.value = restore ? '已恢复默认目录并迁移数据' : '数据目录已应用并完成迁移'
+    await refreshDataInfo()
+  } catch (e) {
+    dataDirOk.value = false
+    dataDirMsg.value = `失败：${e}`
+  } finally {
+    applyingDir.value = false
+  }
+}
 
 async function toggleAutostart() {
   autostartErr.value = ''

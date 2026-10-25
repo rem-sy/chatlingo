@@ -1,8 +1,8 @@
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,20 +24,16 @@ impl HistoryStore {
         HistoryStore { conn: Mutex::new(None) }
     }
 
-    fn init_path(app: &AppHandle) -> PathBuf {
-        let dir = app
-            .path()
-            .app_config_dir()
-            .unwrap_or_else(|_| PathBuf::from("."));
-        std::fs::create_dir_all(&dir).ok();
-        dir.join("history.db")
+    /// 关闭连接（数据目录迁移后重新在新位置打开）
+    pub fn reset(&self) {
+        self.conn.lock().unwrap().take();
     }
 
     /// 惰性建库；失败不影响主流程（历史不可用时静默跳过）
     fn with_conn<T>(&self, app: &AppHandle, f: impl FnOnce(&Connection) -> Result<T, rusqlite::Error>) -> Option<T> {
         let mut guard = self.conn.lock().unwrap();
         if guard.is_none() {
-            match Connection::open(Self::init_path(app)) {
+            match Connection::open(crate::config::data_dir(app).join("history.db")) {
                 Ok(conn) => {
                     let _ = conn.execute_batch(
                         "CREATE TABLE IF NOT EXISTS history (

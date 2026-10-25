@@ -152,12 +152,66 @@ impl Default for AppConfig {
     }
 }
 
-pub fn config_path(app: &AppHandle) -> PathBuf {    let dir = app
-        .path()
+pub fn config_path(app: &AppHandle) -> PathBuf {
+    data_dir(app).join("config.json")
+}
+
+/// 默认（跟随用户配置文件）目录
+pub fn legacy_dir(app: &AppHandle) -> PathBuf {
+    app.path()
         .app_config_dir()
-        .unwrap_or_else(|_| PathBuf::from("."));
-    std::fs::create_dir_all(&dir).ok();
-    dir.join("config.json")
+        .unwrap_or_else(|_| PathBuf::from("."))
+}
+
+/// 数据目录解析优先级：
+/// 1. 便携模式：exe 同目录存在 `chatlingo.portable` 标记 → 用 exe 旁的 data/ 子目录
+/// 2. 自定义：默认目录下 `data-location` 指针文件指向的目录
+/// 3. 默认：%APPDATA%\com.remsy.chatlingo
+pub fn data_dir(app: &AppHandle) -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            if dir.join("chatlingo.portable").exists() {
+                let d = dir.join("data");
+                let _ = fs::create_dir_all(&d);
+                return d;
+            }
+        }
+    }
+    let legacy = legacy_dir(app);
+    if let Ok(s) = fs::read_to_string(legacy.join("data-location")) {
+        let t = s.trim();
+        if !t.is_empty() {
+            let p = PathBuf::from(t);
+            if fs::create_dir_all(&p).is_ok() {
+                return p;
+            }
+        }
+    }
+    fs::create_dir_all(&legacy).ok();
+    legacy
+}
+
+pub fn is_portable() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|d| d.join("chatlingo.portable").exists()))
+        .unwrap_or(false)
+}
+
+/// 写入/清除自定义数据目录指针；便携模式下指针无效
+pub fn set_data_location(app: &AppHandle, path: Option<&str>) -> Result<(), String> {
+    let legacy = legacy_dir(app);
+    fs::create_dir_all(&legacy).map_err(|e| e.to_string())?;
+    let pointer = legacy.join("data-location");
+    match path {
+        Some(p) if !p.trim().is_empty() => {
+            fs::write(&pointer, p.trim()).map_err(|e| e.to_string())?;
+        }
+        _ => {
+            let _ = fs::remove_file(&pointer);
+        }
+    }
+    Ok(())
 }
 
 pub fn load_config(app: &AppHandle) -> AppConfig {

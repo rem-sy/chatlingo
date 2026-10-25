@@ -503,6 +503,56 @@ fn open_history(app: AppHandle) {
     }
 }
 
+/// 查询当前数据目录与模式
+#[tauri::command]
+fn get_data_info(app: AppHandle) -> Value {
+    let dir = config::data_dir(&app);
+    serde_json::json!({
+        "dir": dir.to_string_lossy(),
+        "portable": config::is_portable(),
+        "custom": dir != config::legacy_dir(&app) && !config::is_portable(),
+    })
+}
+
+/// 设置/清除自定义数据目录，并把现有数据迁移过去（便携模式下不可用）
+#[tauri::command]
+fn set_data_dir(app: AppHandle, path: String) -> Result<Value, String> {
+    if config::is_portable() {
+        return Err("便携模式下数据目录固定在 exe 旁，无法自定义".into());
+    }
+    let old = config::data_dir(&app);
+    if path.trim().is_empty() {
+        // 恢复默认
+        config::set_data_location(&app, None)?;
+        state(&app).history.reset();
+        return Ok(serde_json::json!({ "ok": true, "restored": true }));
+    }
+    let new_dir = std::path::PathBuf::from(path.trim());
+    // 中文路径不受影响吗？配置/DB 不经 WebView2，无影响；但为稳妥提示
+    std::fs::create_dir_all(&new_dir).map_err(|e| format!("无法创建目录: {e}"))?;
+    if new_dir == old {
+        return Err("新目录与当前目录相同".into());
+    }
+    // 迁移数据
+    for name in ["config.json", "history.db"] {
+        let src = old.join(name);
+        if src.exists() {
+            let dst = new_dir.join(name);
+            if dst.exists() {
+                let _ = std::fs::rename(&dst, new_dir.join(format!("{name}.bak")));
+            }
+            std::fs::copy(&src, &dst).map_err(|e| format!("迁移 {name} 失败: {e}"))?;
+        }
+    }
+    config::set_data_location(&app, Some(path.trim()))?;
+    // 当前内存配置立即落到新位置；历史连接指向新库
+    let cfg = state(&app).config.lock().unwrap().clone();
+    config::save_config_to_disk(&app, &cfg)?;
+    state(&app).history.reset();
+    eprintln!("[chatlingo] data dir migrated: {} -> {}", old.display(), new_dir.display());
+    Ok(serde_json::json!({ "ok": true, "dir": new_dir.to_string_lossy() }))
+}
+
 #[tauri::command]
 fn get_autostart(app: AppHandle) -> Result<bool, String> {
     use tauri_plugin_autostart::ManagerExt;
@@ -1065,6 +1115,8 @@ pub fn run() {
             history_clear,
             get_autostart,
             set_autostart,
+            get_data_info,
+            set_data_dir,
             panel_ready,
             copy_text,
             paste_text,
