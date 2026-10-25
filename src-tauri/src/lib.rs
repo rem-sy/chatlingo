@@ -411,6 +411,20 @@ fn save_config(app: AppHandle, config: AppConfig) -> Result<(), String> {
     Ok(())
 }
 
+/// 拉取引擎的模型列表（OpenAI 兼容 GET /models）
+#[tauri::command]
+async fn list_models(app: AppHandle) -> Result<Value, String> {
+    let cfg = state(&app).config.lock().unwrap().clone();
+    if cfg.engine.api_key.is_empty() {
+        return Err("请先填写 API Key".into());
+    }
+    let engine = OpenAiCompatEngine::new(cfg.engine.base_url, cfg.engine.api_key, cfg.engine.model);
+    match engine.list_model_ids().await {
+        Ok(ids) => Ok(serde_json::json!({ "models": ids })),
+        Err(e) => Err(e),
+    }
+}
+
 #[tauri::command]
 async fn test_engine(app: AppHandle) -> Result<Value, String> {
     let cfg = state(&app).config.lock().unwrap().clone();
@@ -1056,6 +1070,7 @@ pub fn run() {
             paste_text,
             cancel_screenshot,
             request_screenshot,
+            list_models,
             submit_screenshot,
             submit_input,
             translate_clipboard

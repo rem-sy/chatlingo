@@ -41,6 +41,38 @@ impl OpenAiCompatEngine {
         }
         Ok(())
     }
+
+    /// 拉取模型 ID 列表（按字母序）
+    pub async fn list_model_ids(&self) -> Result<Vec<String>, String> {
+        let url = format!("{}/models", self.base_url.trim_end_matches('/'));
+        let resp = self
+            .client
+            .get(&url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .map_err(|e| format!("网络错误: {e}"))?;
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(format!("HTTP {status}: {}", truncate(&body, 200)));
+        }
+        let v: serde_json::Value =
+            serde_json::from_str(&body).map_err(|e| format!("响应解析失败: {e}"))?;
+        let mut ids: Vec<String> = v
+            .as_object()
+            .and_then(|o| o.get("data"))
+            .and_then(|d| d.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|m| m.get("id").and_then(|i| i.as_str()))
+                    .map(|s| s.to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+        ids.sort();
+        Ok(ids)
+    }
 }
 
 fn truncate(s: &str, n: usize) -> String {

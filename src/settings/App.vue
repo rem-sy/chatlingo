@@ -14,8 +14,16 @@
       </div>
       <div class="form-row">
         <label>模型</label>
-        <input v-model="cfg.engine.model" type="text" placeholder="deepseek-chat" />
+        <input v-model="cfg.engine.model" type="text" list="model-list" placeholder="deepseek-chat 或点击右侧获取" />
+        <button :disabled="loadingModels" @click="fetchModels">{{ loadingModels ? '获取中…' : '获取模型列表' }}</button>
       </div>
+      <div class="form-row" v-if="modelMsg">
+        <label></label>
+        <span class="test-result" :class="models.length ? 'ok' : 'bad'">{{ modelMsg }}</span>
+      </div>
+      <datalist id="model-list">
+        <option v-for="m in models" :key="m" :value="m" />
+      </datalist>
       <div class="form-row">
         <label></label>
         <button :disabled="testing" @click="test">{{ testing ? '测试中…' : '测试连接' }}</button>
@@ -135,6 +143,28 @@ const autostart = ref(false)
 const autostartErr = ref('')
 const testOk = ref<boolean | null>(null)
 const testMsg = ref('')
+const models = ref<string[]>([])
+const loadingModels = ref(false)
+const modelMsg = ref('')
+
+async function fetchModels() {
+  loadingModels.value = true
+  modelMsg.value = ''
+  cfg.value.quickbar.targetLangs = orderedLangs.value
+  try {
+    await invoke('save_config', { config: cfg.value })
+    const res = await invoke<{ models: string[] }>('list_models')
+    models.value = res.models
+    modelMsg.value = res.models.length
+      ? `获取到 ${res.models.length} 个模型，点击模型输入框选择`
+      : '渠道未返回任何模型'
+  } catch (e) {
+    models.value = []
+    modelMsg.value = `获取失败：${e}`
+  } finally {
+    loadingModels.value = false
+  }
+}
 
 // 目录顺序展示勾选结果
 const orderedLangs = computed(() =>
