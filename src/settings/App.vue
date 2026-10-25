@@ -82,6 +82,15 @@
       </div>
     </section>
 
+    <section>
+      <h2>通用</h2>
+      <div class="form-row">
+        <label>开机自启</label>
+        <input type="checkbox" v-model="autostart" @change="toggleAutostart" />
+        <span class="hint">{{ autostartErr || '开机后自动驻留托盘' }}</span>
+      </div>
+    </section>
+
     <footer>
       <span class="saved" v-if="saved">已保存 ✓</span>
       <span class="err" v-if="saveErr">{{ saveErr }}</span>
@@ -101,6 +110,8 @@ const targetLangsStr = ref('en, ja')
 const saved = ref(false)
 const saveErr = ref('')
 const testing = ref(false)
+const autostart = ref(false)
+const autostartErr = ref('')
 const testOk = ref<boolean | null>(null)
 const testMsg = ref('')
 
@@ -128,7 +139,22 @@ onMounted(async () => {
   } catch (e) {
     saveErr.value = String(e)
   }
+  try {
+    autostart.value = await invoke<boolean>('get_autostart')
+  } catch {
+    autostartErr.value = '状态读取失败'
+  }
 })
+
+async function toggleAutostart() {
+  autostartErr.value = ''
+  try {
+    await invoke('set_autostart', { enable: autostart.value })
+  } catch (e) {
+    autostartErr.value = '设置失败，请重试'
+    autostart.value = !autostart.value
+  }
+}
 
 async function save() {
   saved.value = false

@@ -1,6 +1,7 @@
 pub mod config;
 pub mod detect;
 pub mod engines;
+pub mod store;
 
 use config::AppConfig;
 use engines::openai::OpenAiCompatEngine;
@@ -12,6 +13,7 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+use store::HistoryStore;
 
 /// 译文 LRU 缓存（key = hash(text + target + direction)）
 struct TranslationCache {
@@ -60,6 +62,8 @@ struct AppState {
     cache: Mutex<TranslationCache>,
     /// 进行中的翻译请求（同 key 合并等待）
     in_flight: Mutex<HashSet<u64>>,
+    /// 翻译历史
+    history: HistoryStore,
 }
 
 const QUICKBAR: &str = "quickbar";
@@ -102,6 +106,16 @@ fn create_windows(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App("settings.html".into()))
             .title("ChatLingo 设置")
             .inner_size(680.0, 720.0)
+            .resizable(true)
+            .visible(false)
+            .shadow(true)
+            .build()
+    );
+    try_step!(
+        "history",
+        WebviewWindowBuilder::new(app, "history", WebviewUrl::App("history.html".into()))
+            .title("ChatLingo 翻译历史")
+            .inner_size(560.0, 640.0)
             .resizable(true)
             .visible(false)
             .shadow(true)
@@ -246,6 +260,7 @@ async fn run_translation(
     } else {
         Err("LLM 未配置".into())
     };
+    let mut used_engine = "llm";
 
     // 降级链：LLM 失败且 DeepL 已配置 → 自动兜底
     if result.is_err() && deepl_ready {
@@ -260,7 +275,7 @@ async fn run_translation(
         let engine = engines::deepl::DeeplEngine::new(cfg.deepl.api_key.clone());
         use futures_util::StreamExt;
         let mut stream = engine.translate_stream(TranslateParams {
-            text,
+            text: text.clone(),
             target_lang: target,
             direction,
         });
@@ -295,11 +310,17 @@ async fn run_translation(
                 full.chars().count()
             );
             result = Ok(full);
+            used_engine = "deepl";
         }
     }
-    // 成功 → 写入缓存；无论如何清掉 in-flight 标记
+    // 成功 → 写入缓存与历史；无论如何清掉 in-flight 标记
     if let Ok(translated) = &result {
         state(app).cache.lock().unwrap().put(cache_key, translated.clone());
+        let dir_label = match direction {
+            Direction::Input => "input",
+            Direction::Output => "output",
+        };
+        state(app).history.add(app, dir_label, &text, translated, used_engine);
     }
     state(app).in_flight.lock().unwrap().remove(&cache_key);
     result
@@ -433,6 +454,42 @@ fn open_settings(app: AppHandle) {
 
 #[tauri::command]
 fn panel_ready() {}
+
+#[tauri::command]
+fn history_list(app: AppHandle, query: String) -> Vec<store::HistoryEntry> {
+    state(&app).history.list(&app, &query, 500)
+}
+
+#[tauri::command]
+fn history_clear(app: AppHandle) {
+    state(&app).history.clear(&app);
+}
+
+#[tauri::command]
+fn open_history(app: AppHandle) {
+    if let Some(win) = app.get_webview_window("history") {
+        let _ = win.show();
+        let _ = win.set_focus();
+        let _ = win.emit("history-refresh", ());
+    }
+}
+
+#[tauri::command]
+fn get_autostart(app: AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_autostart(app: AppHandle, enable: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let autostart = app.autolaunch();
+    if enable {
+        autostart.enable().map_err(|e| e.to_string())
+    } else {
+        autostart.disable().map_err(|e| e.to_string())
+    }
+}
 
 #[tauri::command]
 fn minimize_panel(app: AppHandle) {
@@ -625,6 +682,10 @@ async fn translate_compare(app: &AppHandle, text: String, target: String) {
         matches!(&llm_res, Ok(Ok(_))),
         matches!(&deepl_res, Ok(Ok(_)))
     );
+    // 对比模式记录大模型译文到历史
+    if let Ok(Ok(translated)) = &llm_res {
+        state(app).history.add(app, "output", &text, translated, "llm-compare");
+    }
     let llm_err = match llm_res {
         Ok(Ok(_)) => None,
         Ok(Err(e)) => Some(e),
@@ -770,9 +831,13 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let toggle_quick = MenuItem::with_id(app, "quick", "呼出输入翻译条", true, None::<&str>)?;
     let translate_clip =
         MenuItem::with_id(app, "clip", "翻译剪贴板（Agent 输出）", true, None::<&str>)?;
+    let history_item = MenuItem::with_id(app, "history", "翻译历史…", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "设置…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&toggle_quick, &translate_clip, &settings_item, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[&toggle_quick, &translate_clip, &history_item, &settings_item, &quit],
+    )?;
 
     let icon = app
         .default_window_icon()
@@ -790,6 +855,7 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     translate_clipboard(app, true).await.ok();
                 });
             }
+            "history" => open_history(app.clone()),
             "settings" => open_settings(app.clone()),
             "quit" => app.exit(0),
             _ => {}
@@ -822,6 +888,10 @@ pub fn run() {
                 let _ = win.set_focus();
             }
         }))
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -848,6 +918,7 @@ pub fn run() {
                 written_hashes: Mutex::new(HashSet::new()),
                 cache: Mutex::new(TranslationCache::new()),
                 in_flight: Mutex::new(HashSet::new()),
+                history: HistoryStore::new(),
             });
             let steps: Vec<(&str, Box<dyn FnOnce(&AppHandle) -> Result<(), Box<dyn std::error::Error>>>)> =
                 vec![];
@@ -865,8 +936,8 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                // 设置窗口点关闭只隐藏，不销毁，便于托盘再次唤起
-                if window.label() == SETTINGS {
+                // 设置/历史窗口点关闭只隐藏，不销毁，便于托盘再次唤起
+                if window.label() == SETTINGS || window.label() == "history" {
                     api.prevent_close();
                     let _ = window.hide();
                 }
@@ -880,6 +951,11 @@ pub fn run() {
             hide_panel,
             minimize_panel,
             open_settings,
+            open_history,
+            history_list,
+            history_clear,
+            get_autostart,
+            set_autostart,
             panel_ready,
             copy_text,
             paste_text,
