@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "ChatLingo 各窗口的默认能力",
-  "windows": ["quickbar", "panel", "settings", "history"],
+  "windows": ["quickbar", "panel", "settings", "history", "snip"],
   "permissions": ["core:default"]
 }

@@ -11,6 +11,7 @@ export default defineConfig({
         panel: resolve(__dirname, 'panel.html'),
         settings: resolve(__dirname, 'settings.html'),
         history: resolve(__dirname, 'history.html'),
+        snip: resolve(__dirname, 'snip.html'),
       },
     },
   },

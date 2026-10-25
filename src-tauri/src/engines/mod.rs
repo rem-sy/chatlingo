@@ -1,5 +1,6 @@
 pub mod deepl;
 pub mod openai;
+pub mod vision;
 
 use futures_util::Stream;
 use std::pin::Pin;

@@ -80,6 +80,14 @@
         <label>最小触发长度</label>
         <input v-model.number="cfg.clipboard.minLength" type="text" />
       </div>
+      <div class="form-row">
+        <label>截图翻译快捷键</label>
+        <input v-model="cfg.clipboard.screenshotHotkey" type="text" placeholder="alt+s" />
+      </div>
+      <div class="form-row">
+        <label>视觉模型（OCR）</label>
+        <input v-model="cfg.clipboard.visionModel" type="text" placeholder="留空则用主力模型；需支持图片输入" />
+      </div>
     </section>
 
     <section>
@@ -125,7 +133,7 @@ function defaultCfg(): AppConfig {
     deepl: { apiKey: '' },
     compareMode: false,
     quickbar: { hotkey: 'alt+t', targetLangs: ['en', 'ja'], defaultTarget: 'en', autoCopy: true, autoPaste: true },
-    clipboard: { monitor: true, minLength: 20, translateHotkey: 'alt+y' },
+    clipboard: { monitor: true, minLength: 20, translateHotkey: 'alt+y', screenshotHotkey: 'alt+s', visionModel: '' },
     outputTarget: 'zh-CN',
   }
 }

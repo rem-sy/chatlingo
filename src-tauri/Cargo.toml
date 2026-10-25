@@ -1,6 +1,6 @@
 [package]
 name = "chatlingo"
-version = "0.1.4"
+version = "0.1.5"
 description = "AI 对话双语悬浮翻译器"
 authors = ["rem-sy"]
 edition = "2021"
@@ -26,6 +26,9 @@ futures-util = "0.3"
 async-stream = "0.3"
 enigo = "0.2"
 arboard = "3"
+xcap = "0.7"
+image = { version = "0.25", default-features = false, features = ["png"] }
+base64 = "0.22"
 
 [profile.release]
 strip = true

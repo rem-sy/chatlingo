@@ -6,6 +6,7 @@ pub mod store;
 use config::AppConfig;
 use engines::openai::OpenAiCompatEngine;
 use engines::{Direction, TranslationEngine, TranslateParams};
+use base64::Engine as _;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::Mutex;
@@ -69,6 +70,7 @@ struct AppState {
 const QUICKBAR: &str = "quickbar";
 const PANEL: &str = "panel";
 const SETTINGS: &str = "settings";
+const SNIP: &str = "snip";
 
 fn default_hash(s: &str) -> u64 {
     let mut h: u64 = 0xcbf29ce484222325;
@@ -145,6 +147,19 @@ fn create_windows(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             .resizable(true)
             .visible(false)
             .shadow(true)
+            .transparent(true)
+            .build()
+    );
+    try_step!(
+        "snip",
+        WebviewWindowBuilder::new(app, SNIP, WebviewUrl::App("snip.html".into()))
+            .title("ChatLingo Snip")
+            .decorations(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .resizable(false)
+            .visible(false)
+            .shadow(false)
             .transparent(true)
             .build()
     );
@@ -512,6 +527,119 @@ async fn paste_text(app: AppHandle, text: String) -> Result<(), String> {
     Ok(())
 }
 
+// ---------- 截图翻译 ----------
+
+/// Alt+S：截取主屏 → 打开选区窗口
+fn start_screenshot(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let Some(win) = app.get_webview_window(SNIP) else { return };
+        // 先截屏（窗口显示前），再弹选区
+        let shot = tauri::async_runtime::spawn_blocking(|| -> Result<(Vec<u8>, u32, u32), String> {
+            let monitor = xcap::Monitor::all()
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .find(|m| m.is_primary().unwrap_or(false))
+                .ok_or("找不到主显示器")?;
+            let img = monitor.capture_image().map_err(|e| e.to_string())?;
+            let (w, h) = (img.width(), img.height());
+            let mut png = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::ImageRgba8(img)
+                .write_to(&mut png, image::ImageFormat::Png)
+                .map_err(|e| e.to_string())?;
+            Ok((png.into_inner(), w, h))
+        })
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r);
+
+        match shot {
+            Ok((png, w, h)) => {
+                let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
+                let _ = win.emit("snip-image", serde_json::json!({
+                    "image": format!("data:image/png;base64,{b64}"),
+                    "width": w,
+                    "height": h,
+                }));
+                // 窗口铺满主屏
+                let _ = win.set_size(tauri::PhysicalSize::new(w, h));
+                let _ = win.set_position(tauri::PhysicalPosition::new(0, 0));
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+            Err(e) => {
+                eprintln!("[chatlingo] screenshot failed: {e}");
+                if let Some(p) = app.get_webview_window(PANEL) {
+                    let _ = p.emit("panel-start", serde_json::json!({
+                        "original": format!("截图失败：{e}"), "outputTarget": "", "compare": false
+                    }));
+                    let _ = p.emit("panel-done", serde_json::json!({ "ok": false, "error": e }));
+                }
+                show_panel_bottom_right(&app);
+            }
+        }
+    });
+}
+
+#[tauri::command]
+fn cancel_screenshot(app: AppHandle) {
+    if let Some(win) = app.get_webview_window(SNIP) {
+        let _ = win.hide();
+    }
+}
+
+/// 选区完成：视觉模型提取文字 → 输出方向翻译
+#[tauri::command]
+async fn submit_screenshot(app: AppHandle, image: String) -> Result<(), String> {
+    // 隐藏选区窗口
+    cancel_screenshot(app.clone());
+    let cfg = state(&app).config.lock().unwrap().clone();
+    if cfg.engine.api_key.is_empty() {
+        return Err("未配置 API Key".into());
+    }
+    // dataURL → PNG bytes（前端 canvas 裁剪后重新编码）
+    let b64 = image.trim_start_matches("data:image/png;base64,").to_string();
+    let png = base64::engine::general_purpose::STANDARD
+        .decode(&b64)
+        .map_err(|e| format!("图片解码失败: {e}"))?;
+
+    eprintln!("[chatlingo] snip: extracting text via vision model ({}KB)", png.len() / 1024);
+    let panel = app.get_webview_window(PANEL);
+    if let Some(p) = &panel {
+        let _ = p.emit("panel-start", serde_json::json!({
+            "original": "（正在识别截图文字…）",
+            "outputTarget": cfg.output_target,
+            "compare": false,
+        }));
+    }
+    show_panel_bottom_right(&app);
+    let extracted = engines::vision::extract_text(&cfg, &png).await;
+    match extracted {
+        Ok(text) => {
+            eprintln!("[chatlingo] snip: extracted {} chars", text.chars().count());
+            if detect::is_already_target(&text, &cfg.output_target)
+                || text.chars().count() < cfg.clipboard.min_length
+            {
+                // 已是中文（或太短）：直接在面板展示识别结果，不翻译
+                if let Some(p) = &panel {
+                    let _ = p.emit("panel-chunk", serde_json::json!({ "text": text }));
+                    let _ = p.emit("panel-done", serde_json::json!({ "ok": true }));
+                }
+                return Ok(());
+            }
+            translate_output(app, text, cfg).await;
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("[chatlingo] snip extract failed: {e}");
+            if let Some(p) = &panel {
+                let _ = p.emit("panel-done", serde_json::json!({ "ok": false, "error": e }));
+            }
+            Err(e)
+        }
+    }
+}
+
 /// Quick Bar 提交：流式翻译 → 完成后按配置自动复制/回填。
 #[tauri::command]
 async fn submit_input(app: AppHandle, text: String, target: String, id: u64) -> Result<(), ()> {
@@ -804,6 +932,13 @@ fn register_hotkeys(app: &AppHandle) {
     } else {
         eprintln!("[chatlingo] hotkey parse FAIL: {}", cfg.clipboard.translate_hotkey);
     }
+    if let Some(s) = parse_shortcut(&cfg.clipboard.screenshot_hotkey) {
+        if let Err(e) = gs.register(s) {
+            eprintln!("[chatlingo] hotkey register FAIL {}: {e}", cfg.clipboard.screenshot_hotkey);
+        }
+    } else {
+        eprintln!("[chatlingo] hotkey parse FAIL: {}", cfg.clipboard.screenshot_hotkey);
+    }
 }
 
 fn on_shortcut(app: &AppHandle, shortcut: &Shortcut) {
@@ -811,12 +946,15 @@ fn on_shortcut(app: &AppHandle, shortcut: &Shortcut) {
     let cfg = state(app).config.lock().unwrap().clone();
     let quick = parse_shortcut(&cfg.quickbar.hotkey);
     let clip = parse_shortcut(&cfg.clipboard.translate_hotkey);
+    let snip = parse_shortcut(&cfg.clipboard.screenshot_hotkey);
     if quick.as_ref() == Some(shortcut) {
         if app.get_webview_window(QUICKBAR).map(|w| w.is_visible().unwrap_or(false)) == Some(true) {
             hide_quickbar_win(app);
         } else {
             show_quickbar(app);
         }
+    } else if snip.as_ref() == Some(shortcut) {
+        start_screenshot(app);
     } else if clip.as_ref() == Some(shortcut) {
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
@@ -959,6 +1097,8 @@ pub fn run() {
             panel_ready,
             copy_text,
             paste_text,
+            cancel_screenshot,
+            submit_screenshot,
             submit_input,
             translate_clipboard
         ])
