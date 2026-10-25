@@ -107,7 +107,8 @@
       </div>
       <div class="form-row">
         <label>视觉模型（OCR）</label>
-        <input v-model="cfg.clipboard.visionModel" type="text" placeholder="留空则用主力模型；需支持图片输入" />
+        <input v-model="cfg.clipboard.visionModel" type="text" list="model-list" placeholder="留空则用主力模型；需支持图片输入" />
+        <button :disabled="loadingModels" @click="fetchModels">{{ loadingModels ? '获取中…' : '获取' }}</button>
       </div>
     </section>
 
