@@ -132,7 +132,7 @@
         <label></label>
         <span class="hint">
           当前：{{ dataInfo?.dir }}（{{ dataInfo?.portable ? '便携模式' : dataInfo?.custom ? '自定义' : '跟随用户配置文件' }}）。
-          应用后配置与历史迁移到新目录。便携模式：在 exe 同目录创建名为 chatlingo.portable 的空文件即可，数据将存于 exe 旁 data/ 子目录
+          浏览选择目录后点「应用」或直接「保存」即自动迁移。便携模式：在 exe 同目录创建名为 chatlingo.portable 的空文件即可，数据将存于 exe 旁 data/ 子目录
         </span>
       </div>
       <div class="form-row" v-if="dataDirMsg">
@@ -367,6 +367,11 @@ async function save() {
     await invoke('save_config', { config: cfg.value })
     saved.value = true
     setTimeout(() => (saved.value = false), 2000)
+    // 数据目录有变更且未应用 → 保存时自动迁移（免得用户漏点「应用」）
+    const want = dataDir.value.trim()
+    if (!dataInfo.value?.portable && want && want !== dataInfo.value?.dir) {
+      await applyDataDir()
+    }
   } catch (e) {
     saveErr.value = String(e)
   }
