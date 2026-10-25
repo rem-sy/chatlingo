@@ -125,7 +125,7 @@
         <label>数据目录</label>
         <input v-model="dataDir" type="text" placeholder="留空 = 跟随用户配置文件 (%APPDATA%)" :disabled="dataInfo?.portable" />
         <button :disabled="dataInfo?.portable" @click="browseDir">浏览…</button>
-        <button :disabled="dataInfo?.portable || applyingDir" @click="applyDataDir">{{ applyingDir ? '迁移中…' : '应用' }}</button>
+        <button :disabled="dataInfo?.portable || applyingDir" @click="applyDataDir()">{{ applyingDir ? '迁移中…' : '应用' }}</button>
         <button v-if="dataInfo?.custom" @click="applyDataDir(true)">恢复默认</button>
       </div>
       <div class="form-row">
