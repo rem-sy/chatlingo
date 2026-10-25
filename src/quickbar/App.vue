@@ -58,8 +58,8 @@ const label = (l: string) => LANG_LABELS[l] ?? l
 const targetLabel = computed(() => label(target.value))
 const placeholder = computed(() =>
   target.value === 'zh-CN'
-    ? '输入或截图外文文本，回车翻译为中文…'
-    : `输入中文（或截图识别），回车翻译为 ${targetLabel.value}…`
+    ? '输入、粘贴或截图识别文字，回车翻译为中文…'
+    : `输入、粘贴或截图识别文字，回车翻译为 ${targetLabel.value}…`
 )
 const display = computed(() => translated.value || '')
 const statusText = computed(() => {
