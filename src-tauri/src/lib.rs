@@ -503,6 +503,21 @@ fn open_history(app: AppHandle) {
     }
 }
 
+/// 系统文件夹选择器（Rust 侧调用，不走前端 ACL）
+#[tauri::command]
+async fn pick_folder(app: AppHandle) -> Result<Value, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let folder = app
+        .dialog()
+        .file()
+        .set_title("选择数据存储目录")
+        .blocking_pick_folder();
+    match folder {
+        Some(p) => Ok(serde_json::json!({ "path": p.to_string() })),
+        None => Ok(serde_json::json!({ "path": null })),
+    }
+}
+
 /// 查询当前数据目录与模式
 #[tauri::command]
 fn get_data_info(app: AppHandle) -> Value {
@@ -1064,6 +1079,7 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -1132,6 +1148,7 @@ pub fn run() {
             resume_hotkeys,
             get_data_info,
             set_data_dir,
+            pick_folder,
             panel_ready,
             copy_text,
             paste_text,
