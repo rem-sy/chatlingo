@@ -329,16 +329,20 @@ async fn translate_clipboard(app: AppHandle, manual: bool) -> Result<(), ()> {  
 pub async fn translate_output(app: AppHandle, text: String, cfg: AppConfig) {
     let trimmed = text.trim().to_string();
     if trimmed.chars().count() < cfg.clipboard.min_length {
+        eprintln!("[chatlingo] skip: too short ({} < {})", trimmed.chars().count(), cfg.clipboard.min_length);
         return;
     }
     let h = default_hash(&trimmed);
     if state(&app).written_hashes.lock().unwrap().contains(&h) {
+        eprintln!("[chatlingo] skip: written by ourselves");
         return;
     }
     if detect::is_already_target(&trimmed, &cfg.output_target) {
+        eprintln!("[chatlingo] skip: already target language");
         return;
     }
     if detect::code_dominant(&trimmed) {
+        eprintln!("[chatlingo] skip: code dominant");
         return;
     }
     let panel = app.get_webview_window(PANEL);
@@ -438,14 +442,23 @@ fn register_hotkeys(app: &AppHandle) {
     let _ = gs.unregister_all();
     let cfg = state(app).config.lock().unwrap().clone();
     if let Some(s) = parse_shortcut(&cfg.quickbar.hotkey) {
-        let _ = gs.register(s);
+        if let Err(e) = gs.register(s) {
+            eprintln!("[chatlingo] hotkey register FAIL {}: {e}", cfg.quickbar.hotkey);
+        }
+    } else {
+        eprintln!("[chatlingo] hotkey parse FAIL: {}", cfg.quickbar.hotkey);
     }
     if let Some(s) = parse_shortcut(&cfg.clipboard.translate_hotkey) {
-        let _ = gs.register(s);
+        if let Err(e) = gs.register(s) {
+            eprintln!("[chatlingo] hotkey register FAIL {}: {e}", cfg.clipboard.translate_hotkey);
+        }
+    } else {
+        eprintln!("[chatlingo] hotkey parse FAIL: {}", cfg.clipboard.translate_hotkey);
     }
 }
 
 fn on_shortcut(app: &AppHandle, shortcut: &Shortcut) {
+    eprintln!("[chatlingo] shortcut fired: {shortcut:?}");
     let cfg = state(app).config.lock().unwrap().clone();
     let quick = parse_shortcut(&cfg.quickbar.hotkey);
     let clip = parse_shortcut(&cfg.clipboard.translate_hotkey);
