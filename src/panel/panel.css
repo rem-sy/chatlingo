@@ -48,6 +48,15 @@ button.mini {
   gap: 8px;
 }
 
+.engine-note {
+  font-size: 12px;
+  color: #ffb86c;
+  background: rgba(255, 184, 108, 0.08);
+  border: 1px solid rgba(255, 184, 108, 0.25);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
 details.original summary {
   cursor: pointer;
   font-size: 12px;

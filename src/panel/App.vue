@@ -9,6 +9,7 @@
       <button class="mini" title="关闭" @click="close">×</button>
     </div>
     <div class="panel-body">
+      <div v-if="note" class="engine-note">{{ note }}</div>
       <details class="original">
         <summary>原文</summary>
         <div class="original-text">{{ original }}</div>
@@ -31,6 +32,7 @@ const original = ref('')
 const translation = ref('')
 const streaming = ref(false)
 const error = ref('')
+const note = ref('')
 const outputTarget = ref('zh-CN')
 
 const outputLabel = computed(() => LANG_LABELS[outputTarget.value] ?? outputTarget.value)
@@ -53,7 +55,11 @@ async function onMountedHook() {
     outputTarget.value = e.payload.outputTarget
     translation.value = ''
     error.value = ''
+    note.value = ''
     streaming.value = true
+  })
+  await listen<{ note: string }>('engine-note', (e) => {
+    note.value = e.payload.note
   })
   await listen<{ text: string }>('panel-chunk', (e) => {
     translation.value += e.payload.text

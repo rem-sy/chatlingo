@@ -94,9 +94,24 @@ impl Default for ClipboardConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DeeplConfig {
+    #[serde(default)]
+    pub api_key: String,
+}
+
+impl Default for DeeplConfig {
+    fn default() -> Self {
+        DeeplConfig { api_key: String::new() }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     #[serde(default)]
     pub engine: EngineConfig,
+    #[serde(default)]
+    pub deepl: DeeplConfig,
     #[serde(default)]
     pub quickbar: QuickbarConfig,
     #[serde(default)]
@@ -117,6 +132,7 @@ impl Default for AppConfig {
                 api_key: String::new(),
                 model: default_model(),
             },
+            deepl: DeeplConfig::default(),
             quickbar: QuickbarConfig {
                 hotkey: default_hotkey(),
                 target_langs: default_target_langs(),
@@ -134,8 +150,7 @@ impl Default for AppConfig {
     }
 }
 
-pub fn config_path(app: &AppHandle) -> PathBuf {
-    let dir = app
+pub fn config_path(app: &AppHandle) -> PathBuf {    let dir = app
         .path()
         .app_config_dir()
         .unwrap_or_else(|_| PathBuf::from("."));

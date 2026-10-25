@@ -9,8 +9,13 @@ export interface EngineConfig {
   model: string
 }
 
+export interface DeeplConfig {
+  apiKey: string
+}
+
 export interface AppConfig {
   engine: EngineConfig
+  deepl: DeeplConfig
   quickbar: {
     hotkey: string
     targetLangs: string[]

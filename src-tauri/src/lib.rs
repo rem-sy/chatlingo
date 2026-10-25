@@ -146,17 +146,84 @@ async fn run_translation(
     direction: Direction,
 ) -> Result<String, String> {
     let cfg = state(app).config.lock().unwrap().clone();
-    eprintln!(
-        "[chatlingo] engine: url={} model={} key_len={} key_tail={:?}",
-        cfg.engine.base_url,
-        cfg.engine.model,
-        cfg.engine.api_key.len(),
-        cfg.engine.api_key.chars().rev().take(6).collect::<String>()
-    );
-    if cfg.engine.api_key.is_empty() {
-        return Err("未配置 API Key，请先在设置中填写".into());
+    let llm_ready = !cfg.engine.api_key.is_empty();
+    let deepl_ready = !cfg.deepl.api_key.is_empty();
+    if !llm_ready && !deepl_ready {
+        return Err("未配置任何翻译引擎，请先在设置中填写".into());
     }
-    let engine = OpenAiCompatEngine::new(cfg.engine.base_url, cfg.engine.api_key, cfg.engine.model);
+
+    let mut result = if llm_ready {
+        eprintln!(
+            "[chatlingo] engine: primary=LLM url={} model={}",
+            cfg.engine.base_url, cfg.engine.model
+        );
+        run_engine_stream(app, window, text.clone(), target.clone(), direction, &cfg).await
+    } else {
+        Err("LLM 未配置".into())
+    };
+
+    // 降级链：LLM 失败且 DeepL 已配置 → 自动兜底
+    if result.is_err() && deepl_ready {
+        let err = result.clone().unwrap_err();
+        eprintln!("[chatlingo] LLM failed ({err}), falling back to DeepL");
+        if let Some(win) = app.get_webview_window(window) {
+            let _ = win.emit(
+                "engine-note",
+                serde_json::json!({ "note": format!("大模型失败，已用 DeepL 兜底（{err}）") }),
+            );
+        }
+        let engine = engines::deepl::DeeplEngine::new(cfg.deepl.api_key.clone());
+        use futures_util::StreamExt;
+        let mut stream = engine.translate_stream(TranslateParams {
+            text,
+            target_lang: target,
+            direction,
+        });
+        let win = app.get_webview_window(window);
+        let mut full = String::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(chunk) => {
+                    full.push_str(&chunk);
+                    if let Some(w) = &win {
+                        if window == QUICKBAR {
+                            let id = ACTIVE_REQ.load(std::sync::atomic::Ordering::SeqCst);
+                            let _ = w.emit(
+                                "quickbar-chunk",
+                                serde_json::json!({ "id": id, "text": chunk }),
+                            );
+                        } else {
+                            let _ = w.emit("panel-chunk", serde_json::json!({ "text": chunk }));
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[chatlingo] deepl translate error: {e}");
+                    result = Err(format!("LLM: {err}；DeepL: {e}"));
+                    break;
+                }
+            }
+        }
+        if result.is_err() && !full.trim().is_empty() {
+            eprintln!(
+                "[chatlingo] translate ok via DeepL: {} chars",
+                full.chars().count()
+            );
+            result = Ok(full);
+        }
+    }
+    result
+}
+
+async fn run_engine_stream(
+    app: &AppHandle,
+    window: &str,
+    text: String,
+    target: String,
+    direction: Direction,
+    cfg: &AppConfig,
+) -> Result<String, String> {
+    let engine = OpenAiCompatEngine::new(cfg.engine.base_url.clone(), cfg.engine.api_key.clone(), cfg.engine.model.clone());
     let mut stream = engine.translate_stream(TranslateParams {
         text,
         target_lang: target,
@@ -221,14 +288,39 @@ fn save_config(app: AppHandle, config: AppConfig) -> Result<(), String> {
 #[tauri::command]
 async fn test_engine(app: AppHandle) -> Result<Value, String> {
     let cfg = state(&app).config.lock().unwrap().clone();
-    if cfg.engine.api_key.is_empty() {
-        return Ok(serde_json::json!({ "ok": false, "error": "API Key 为空" }));
+    // LLM 主引擎
+    let llm = if cfg.engine.api_key.is_empty() {
+        (false, "未填写 Key".to_string())
+    } else {
+        let engine = OpenAiCompatEngine::new(cfg.engine.base_url.clone(), cfg.engine.api_key.clone(), cfg.engine.model.clone());
+        match engine.quick_check().await {
+            Ok(()) => (true, String::new()),
+            Err(e) => (false, e),
+        }
+    };
+    // DeepL 兜底
+    let deepl = if cfg.deepl.api_key.is_empty() {
+        (false, "未填写 Key".to_string())
+    } else {
+        let engine = engines::deepl::DeeplEngine::new(cfg.deepl.api_key.clone());
+        match engine.quick_check().await {
+            Ok(()) => (true, String::new()),
+            Err(e) => (false, e),
+        }
+    };
+    let ok = llm.0 || deepl.0;
+    let mut parts = vec![];
+    if !llm.0 {
+        parts.push(format!("大模型: {}", llm.1));
+    } else {
+        parts.push("大模型: ✓".into());
     }
-    let engine = OpenAiCompatEngine::new(cfg.engine.base_url, cfg.engine.api_key, cfg.engine.model);
-    match engine.quick_check().await {
-        Ok(()) => Ok(serde_json::json!({ "ok": true })),
-        Err(e) => Ok(serde_json::json!({ "ok": false, "error": e })),
+    if !deepl.0 {
+        parts.push(format!("DeepL: {}", deepl.1));
+    } else {
+        parts.push("DeepL: ✓".into());
     }
+    Ok(serde_json::json!({ "ok": ok, "error": parts.join("；") }))
 }
 
 #[tauri::command]
@@ -510,6 +602,18 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+// ---------- 预置配置（编译期嵌入 src-tauri/preset.json） ----------
+
+const PRESET_JSON: &str = include_str!("../preset.json");
+
+fn embedded_preset() -> Option<AppConfig> {
+    // 预置文件里大模型 Key 为空 → 视为空白版
+    match serde_json::from_str::<AppConfig>(PRESET_JSON) {
+        Ok(cfg) if !cfg.engine.api_key.is_empty() => Some(cfg),
+        _ => None,
+    }
+}
+
 // ---------- 入口 ----------
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -532,6 +636,16 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            let path = config::config_path(&app.handle());
+            // 预置版：本地无配置时写入内置预置配置
+            if !path.exists() {
+                if let Some(preset) = embedded_preset() {
+                    eprintln!("[chatlingo] applying embedded preset config");
+                    if let Err(e) = config::save_config_to_disk(&app.handle(), &preset) {
+                        eprintln!("[chatlingo] preset write failed: {e}");
+                    }
+                }
+            }
             let cfg = config::load_config(&app.handle());
             app.manage(AppState {
                 config: Mutex::new(cfg),

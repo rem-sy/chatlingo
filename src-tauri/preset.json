@@ -1,0 +1,10 @@
+{
+  "engine": {
+    "baseUrl": "",
+    "apiKey": "",
+    "model": ""
+  },
+  "deepl": {
+    "apiKey": ""
+  }
+}

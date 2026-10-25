@@ -46,6 +46,7 @@ textarea:focus { border: none; }
 @keyframes blink { 50% { opacity: 0; } }
 
 .error { color: var(--err); font-size: 13px; padding: 6px 2px; }
+.note { color: #ffb86c; font-size: 12.5px; padding: 6px 2px; }
 
 .toolbar {
   display: flex;

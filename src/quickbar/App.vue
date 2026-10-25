@@ -11,6 +11,7 @@
     </div>
     <div v-if="translated || streaming || error" class="divider"></div>
     <div v-if="error" class="error">{{ error }}</div>
+    <div v-else-if="note" class="note">{{ note }}</div>
     <div v-else-if="translated || streaming" class="output-zone">
       <div class="output-text" :class="{ streaming }">{{ display }}</div>
     </div>
@@ -51,6 +52,7 @@ const error = ref('')
 const target = ref('en')
 const langs = ref<string[]>(['en', 'ja'])
 const cfg = ref<AppConfig | null>(null)
+const note = ref('')
 let reqId = 0
 
 const label = (l: string) => LANG_LABELS[l] ?? l
@@ -88,10 +90,14 @@ onMounted(async () => {
     source.value = ''
     translated.value = ''
     error.value = ''
+    note.value = ''
     translating.value = false
     streaming.value = false
     autoDone.value = false
     inputEl.value?.focus()
+  })
+  await listen<{ note: string }>('engine-note', (e) => {
+    note.value = e.payload.note
   })
 })
 

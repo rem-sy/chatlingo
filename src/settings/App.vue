@@ -26,6 +26,18 @@
     </section>
 
     <section>
+      <h2>兜底引擎（DeepL，可选）</h2>
+      <div class="form-row">
+        <label>DeepL API Key</label>
+        <input v-model="cfg.deepl.apiKey" type="password" placeholder="留空则不启用兜底；免费版 Key 以 :fx 结尾" />
+      </div>
+      <div class="form-row">
+        <label></label>
+        <span class="hint">大模型请求失败时自动用 DeepL 翻译；每月免费 50 万字符</span>
+      </div>
+    </section>
+
+    <section>
       <h2>输入方向（我的输入 → 外语）</h2>
       <div class="form-row">
         <label>呼出快捷键</label>
@@ -94,6 +106,7 @@ const langsList = computed(() =>
 function defaultCfg(): AppConfig {
   return {
     engine: { baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat' },
+    deepl: { apiKey: '' },
     quickbar: { hotkey: 'alt+t', targetLangs: ['en', 'ja'], defaultTarget: 'en', autoCopy: true, autoPaste: true },
     clipboard: { monitor: true, minLength: 20, translateHotkey: 'alt+y' },
     outputTarget: 'zh-CN',
@@ -102,7 +115,9 @@ function defaultCfg(): AppConfig {
 
 onMounted(async () => {
   try {
-    cfg.value = await invoke<AppConfig>('get_config')
+    const c = await invoke<AppConfig>('get_config')
+    if (!c.deepl) c.deepl = { apiKey: '' }
+    cfg.value = c
     targetLangsStr.value = cfg.value.quickbar.targetLangs.join(', ')
   } catch (e) {
     saveErr.value = String(e)

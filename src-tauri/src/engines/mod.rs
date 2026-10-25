@@ -1,3 +1,4 @@
+pub mod deepl;
 pub mod openai;
 
 use futures_util::Stream;
