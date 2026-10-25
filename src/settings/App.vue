@@ -150,6 +150,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { listen } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { invoke, type AppConfig, LANG_CATALOG, langDef } from '../shared/api'
 import '../shared/base.css'
 import './settings.css'
@@ -203,6 +205,10 @@ function defaultCfg(): AppConfig {
 }
 
 onMounted(async () => {
+  // 录入中窗口失焦 → 自动恢复热键，防止忘记停止导致快捷键失效
+  await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+    if (!focused) stopRecording()
+  })
   try {
     const c = await invoke<AppConfig>('get_config')
     if (!c.deepl) c.deepl = { apiKey: '' }
@@ -272,9 +278,23 @@ async function toggleAutostart() {
 const recording = ref(false)
 const hotkeyErr = ref('')
 
-function toggleRecord() {
-  recording.value = !recording.value
+async function toggleRecord() {
   hotkeyErr.value = ''
+  if (recording.value) {
+    recording.value = false
+    await invoke('resume_hotkeys')
+  } else {
+    recording.value = true
+    // 录入期间注销全局热键，避免旧组合键触发面板
+    await invoke('suspend_hotkeys')
+  }
+}
+
+async function stopRecording() {
+  if (recording.value) {
+    recording.value = false
+    await invoke('resume_hotkeys')
+  }
 }
 
 function keyFromEvent(e: KeyboardEvent): string | null {
@@ -297,7 +317,7 @@ if (typeof window !== 'undefined') {
     e.preventDefault()
     e.stopPropagation()
     if (e.key === 'Escape') {
-      recording.value = false
+      stopRecording()
       return
     }
     // 只按了修饰键时继续等待
@@ -318,7 +338,7 @@ if (typeof window !== 'undefined') {
     if (e.metaKey) parts.push('meta')
     parts.push(key)
     cfg.value.quickbar.hotkey = parts.join('+')
-    recording.value = false
+    stopRecording()
   })
 }
 

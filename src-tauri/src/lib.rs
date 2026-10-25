@@ -986,6 +986,19 @@ fn register_hotkeys(app: &AppHandle) {
     }
 }
 
+/// 快捷键录入期间临时注销，避免按到旧组合键触发面板
+#[tauri::command]
+fn suspend_hotkeys(app: AppHandle) {
+    let _ = app.global_shortcut().unregister_all();
+    eprintln!("[chatlingo] hotkeys suspended (recording)");
+}
+
+#[tauri::command]
+fn resume_hotkeys(app: AppHandle) {
+    register_hotkeys(&app);
+    eprintln!("[chatlingo] hotkeys resumed");
+}
+
 fn on_shortcut(app: &AppHandle, shortcut: &Shortcut) {
     eprintln!("[chatlingo] shortcut fired: {shortcut:?}");
     if app.get_webview_window(QUICKBAR).map(|w| w.is_visible().unwrap_or(false)) == Some(true) {
@@ -1115,6 +1128,8 @@ pub fn run() {
             history_clear,
             get_autostart,
             set_autostart,
+            suspend_hotkeys,
+            resume_hotkeys,
             get_data_info,
             set_data_dir,
             panel_ready,
