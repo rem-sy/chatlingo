@@ -75,24 +75,13 @@ pub struct ClipboardConfig {
     pub monitor: bool,
     #[serde(default = "default_min_len")]
     pub min_length: usize,
-    #[serde(default = "default_translate_hotkey")]
-    pub translate_hotkey: String,
-    #[serde(default = "default_screenshot_hotkey")]
-    pub screenshot_hotkey: String,
     /// 视觉模型（截图 OCR 用），留空则复用主力模型
     #[serde(default)]
     pub vision_model: String,
 }
 
-fn default_screenshot_hotkey() -> String {
-    "alt+s".into()
-}
-
 fn default_min_len() -> usize {
     20
-}
-fn default_translate_hotkey() -> String {
-    "alt+y".into()
 }
 
 impl Default for ClipboardConfig {
@@ -100,8 +89,6 @@ impl Default for ClipboardConfig {
         ClipboardConfig {
             monitor: true,
             min_length: default_min_len(),
-            translate_hotkey: default_translate_hotkey(),
-            screenshot_hotkey: default_screenshot_hotkey(),
             vision_model: String::new(),
         }
     }

@@ -68,10 +68,6 @@
     <section>
       <h2>输出方向（Agent 输出 → 中文）</h2>
       <div class="form-row">
-        <label>翻译剪贴板快捷键</label>
-        <input v-model="cfg.clipboard.translateHotkey" type="text" placeholder="alt+y" />
-      </div>
-      <div class="form-row">
         <label>剪贴板自动监听</label>
         <input type="checkbox" v-model="cfg.clipboard.monitor" />
         <span class="hint">复制外文文本时自动弹出译文面板</span>
@@ -79,10 +75,6 @@
       <div class="form-row">
         <label>最小触发长度</label>
         <input v-model.number="cfg.clipboard.minLength" type="text" />
-      </div>
-      <div class="form-row">
-        <label>截图翻译快捷键</label>
-        <input v-model="cfg.clipboard.screenshotHotkey" type="text" placeholder="alt+s" />
       </div>
       <div class="form-row">
         <label>视觉模型（OCR）</label>
@@ -133,7 +125,7 @@ function defaultCfg(): AppConfig {
     deepl: { apiKey: '' },
     compareMode: false,
     quickbar: { hotkey: 'alt+t', targetLangs: ['en', 'ja'], defaultTarget: 'en', autoCopy: true, autoPaste: true },
-    clipboard: { monitor: true, minLength: 20, translateHotkey: 'alt+y', screenshotHotkey: 'alt+s', visionModel: '' },
+    clipboard: { monitor: true, minLength: 20, visionModel: '' },
     outputTarget: 'zh-CN',
   }
 }

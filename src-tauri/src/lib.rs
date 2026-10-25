@@ -529,7 +529,7 @@ async fn paste_text(app: AppHandle, text: String) -> Result<(), String> {
 
 // ---------- 截图翻译 ----------
 
-/// Alt+S：截取主屏 → 打开选区窗口
+/// 统一翻译面板点「截图」：截取主屏 → 选区 → 识别文字回填输入框
 fn start_screenshot(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -569,13 +569,10 @@ fn start_screenshot(app: &AppHandle) {
             }
             Err(e) => {
                 eprintln!("[chatlingo] screenshot failed: {e}");
-                if let Some(p) = app.get_webview_window(PANEL) {
-                    let _ = p.emit("panel-start", serde_json::json!({
-                        "original": format!("截图失败：{e}"), "outputTarget": "", "compare": false
-                    }));
-                    let _ = p.emit("panel-done", serde_json::json!({ "ok": false, "error": e }));
+                if let Some(b) = app.get_webview_window(QUICKBAR) {
+                    let _ = b.emit("quickbar-done", serde_json::json!({ "id": 0, "ok": false, "error": format!("截图失败：{e}") }));
+                    let _ = b.show();
                 }
-                show_panel_bottom_right(&app);
             }
         }
     });
@@ -588,7 +585,13 @@ fn cancel_screenshot(app: AppHandle) {
     }
 }
 
-/// 选区完成：视觉模型提取文字 → 输出方向翻译
+/// 统一翻译面板点「截图」：选区文字识别后回填输入框
+#[tauri::command]
+fn request_screenshot(app: AppHandle) {
+    start_screenshot(&app);
+}
+
+/// 选区完成：视觉模型提取文字 → 回填统一翻译面板输入框
 #[tauri::command]
 async fn submit_screenshot(app: AppHandle, image: String) -> Result<(), String> {
     // 隐藏选区窗口
@@ -604,36 +607,27 @@ async fn submit_screenshot(app: AppHandle, image: String) -> Result<(), String> 
         .map_err(|e| format!("图片解码失败: {e}"))?;
 
     eprintln!("[chatlingo] snip: extracting text via vision model ({}KB)", png.len() / 1024);
-    let panel = app.get_webview_window(PANEL);
-    if let Some(p) = &panel {
-        let _ = p.emit("panel-start", serde_json::json!({
-            "original": "（正在识别截图文字…）",
-            "outputTarget": cfg.output_target,
-            "compare": false,
-        }));
+
+    let bar = app.get_webview_window(QUICKBAR);
+    if let Some(b) = &bar {
+        let _ = b.emit("quickbar-chunk-status", serde_json::json!({ "text": "截图识别中…" }));
+        let _ = b.show();
+        let _ = b.set_focus();
     }
-    show_panel_bottom_right(&app);
     let extracted = engines::vision::extract_text(&cfg, &png).await;
     match extracted {
         Ok(text) => {
-            eprintln!("[chatlingo] snip: extracted {} chars", text.chars().count());
-            if detect::is_already_target(&text, &cfg.output_target)
-                || text.chars().count() < cfg.clipboard.min_length
-            {
-                // 已是中文（或太短）：直接在面板展示识别结果，不翻译
-                if let Some(p) = &panel {
-                    let _ = p.emit("panel-chunk", serde_json::json!({ "text": text }));
-                    let _ = p.emit("panel-done", serde_json::json!({ "ok": true }));
-                }
-                return Ok(());
+            eprintln!("[chatlingo] snip->quickbar: extracted {} chars", text.chars().count());
+            if let Some(b) = &bar {
+                let _ = b.emit("quickbar-ocr", serde_json::json!({ "text": text }));
             }
-            translate_output(app, text, cfg).await;
             Ok(())
         }
         Err(e) => {
             eprintln!("[chatlingo] snip extract failed: {e}");
-            if let Some(p) = &panel {
-                let _ = p.emit("panel-done", serde_json::json!({ "ok": false, "error": e }));
+            if let Some(b) = &bar {
+                let _ = b.emit("quickbar-ocr", serde_json::json!({ "text": "" }));
+                let _ = b.emit("quickbar-done", serde_json::json!({ "id": 0, "ok": false, "error": format!("截图识别失败：{e}") }));
             }
             Err(e)
         }
@@ -918,6 +912,7 @@ fn register_hotkeys(app: &AppHandle) {
     let gs = app.global_shortcut();
     let _ = gs.unregister_all();
     let cfg = state(app).config.lock().unwrap().clone();
+    // 唯一快捷键：呼出统一翻译面板
     if let Some(s) = parse_shortcut(&cfg.quickbar.hotkey) {
         if let Err(e) = gs.register(s) {
             eprintln!("[chatlingo] hotkey register FAIL {}: {e}", cfg.quickbar.hotkey);
@@ -925,57 +920,25 @@ fn register_hotkeys(app: &AppHandle) {
     } else {
         eprintln!("[chatlingo] hotkey parse FAIL: {}", cfg.quickbar.hotkey);
     }
-    if let Some(s) = parse_shortcut(&cfg.clipboard.translate_hotkey) {
-        if let Err(e) = gs.register(s) {
-            eprintln!("[chatlingo] hotkey register FAIL {}: {e}", cfg.clipboard.translate_hotkey);
-        }
-    } else {
-        eprintln!("[chatlingo] hotkey parse FAIL: {}", cfg.clipboard.translate_hotkey);
-    }
-    if let Some(s) = parse_shortcut(&cfg.clipboard.screenshot_hotkey) {
-        if let Err(e) = gs.register(s) {
-            eprintln!("[chatlingo] hotkey register FAIL {}: {e}", cfg.clipboard.screenshot_hotkey);
-        }
-    } else {
-        eprintln!("[chatlingo] hotkey parse FAIL: {}", cfg.clipboard.screenshot_hotkey);
-    }
 }
 
 fn on_shortcut(app: &AppHandle, shortcut: &Shortcut) {
     eprintln!("[chatlingo] shortcut fired: {shortcut:?}");
-    let cfg = state(app).config.lock().unwrap().clone();
-    let quick = parse_shortcut(&cfg.quickbar.hotkey);
-    let clip = parse_shortcut(&cfg.clipboard.translate_hotkey);
-    let snip = parse_shortcut(&cfg.clipboard.screenshot_hotkey);
-    if quick.as_ref() == Some(shortcut) {
-        if app.get_webview_window(QUICKBAR).map(|w| w.is_visible().unwrap_or(false)) == Some(true) {
-            hide_quickbar_win(app);
-        } else {
-            show_quickbar(app);
-        }
-    } else if snip.as_ref() == Some(shortcut) {
-        start_screenshot(app);
-    } else if clip.as_ref() == Some(shortcut) {
-        let app = app.clone();
-        tauri::async_runtime::spawn(async move {
-            translate_clipboard(app, true).await.ok();
-        });
+    if app.get_webview_window(QUICKBAR).map(|w| w.is_visible().unwrap_or(false)) == Some(true) {
+        hide_quickbar_win(app);
+    } else {
+        show_quickbar(app);
     }
 }
 
 // ---------- 托盘 ----------
 
 fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let toggle_quick = MenuItem::with_id(app, "quick", "呼出输入翻译条", true, None::<&str>)?;
-    let translate_clip =
-        MenuItem::with_id(app, "clip", "翻译剪贴板（Agent 输出）", true, None::<&str>)?;
+    let toggle_quick = MenuItem::with_id(app, "quick", "呼出翻译面板", true, None::<&str>)?;
     let history_item = MenuItem::with_id(app, "history", "翻译历史…", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "设置…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(
-        app,
-        &[&toggle_quick, &translate_clip, &history_item, &settings_item, &quit],
-    )?;
+    let menu = Menu::with_items(app, &[&toggle_quick, &history_item, &settings_item, &quit])?;
 
     let icon = app
         .default_window_icon()
@@ -987,12 +950,6 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quick" => show_quickbar(app),
-            "clip" => {
-                let app = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    translate_clipboard(app, true).await.ok();
-                });
-            }
             "history" => open_history(app.clone()),
             "settings" => open_settings(app.clone()),
             "quit" => app.exit(0),
@@ -1098,6 +1055,7 @@ pub fn run() {
             copy_text,
             paste_text,
             cancel_screenshot,
+            request_screenshot,
             submit_screenshot,
             submit_input,
             translate_clipboard

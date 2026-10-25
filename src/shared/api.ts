@@ -27,7 +27,7 @@ export interface AppConfig {
   clipboard: {
     monitor: boolean
     minLength: number
-    translateHotkey: string
+    visionModel: string
   }
   outputTarget: string
 }

@@ -55,6 +55,11 @@ textarea:focus { border: none; }
   margin-top: 8px;
 }
 .langs { display: flex; gap: 6px; }
+.snap-btn {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 6px;
+}
 .lang-pill {
   padding: 2px 12px;
   border-radius: 999px;
