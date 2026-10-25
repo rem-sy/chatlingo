@@ -43,30 +43,51 @@
     </section>
 
     <section>
-      <h2>输入方向（我的输入 → 外语）</h2>
+      <h2>语言</h2>
+      <div class="form-row">
+        <label>可用语言</label>
+        <div class="lang-grid">
+          <label v-for="l in LANG_CATALOG" :key="l.code" class="lang-check">
+            <input
+              type="checkbox"
+              :value="l.code"
+              v-model="selectedLangs"
+            />
+            {{ l.label }} {{ l.name }}
+          </label>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>默认目标</label>
+        <select v-model="cfg.quickbar.defaultTarget">
+          <option v-for="c in selectedLangs" :key="c" :value="c">{{ langDef(c).label }} {{ langDef(c).name }}</option>
+        </select>
+        <span class="hint">Alt+T 面板初始选中的目标语言</span>
+      </div>
+      <div class="form-row">
+        <label>输出方向目标</label>
+        <select v-model="cfg.outputTarget">
+          <option v-for="l in LANG_CATALOG" :key="l.code" :value="l.code">{{ l.label }} {{ l.name }}</option>
+        </select>
+        <span class="hint">剪贴板监听/输出方向的翻译目标</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>翻译面板</h2>
       <div class="form-row">
         <label>呼出快捷键</label>
         <input v-model="cfg.quickbar.hotkey" type="text" placeholder="alt+t" />
       </div>
       <div class="form-row">
-        <label>目标语言</label>
-        <input v-model="targetLangsStr" type="text" placeholder="en, ja" />
-      </div>
-      <div class="form-row">
-        <label>默认目标</label>
-        <select v-model="cfg.quickbar.defaultTarget">
-          <option v-for="l in langsList" :key="l" :value="l">{{ l }}</option>
-        </select>
-      </div>
-      <div class="form-row">
         <label>译文自动回填</label>
         <input type="checkbox" v-model="cfg.quickbar.autoPaste" />
-        <span class="hint">翻译完成后自动写入剪贴板并模拟 Ctrl+V 粘贴回原输入框</span>
+        <span class="hint">翻译完成后自动写入剪贴板并模拟 Ctrl+V 粘贴回原输入框（仅外语目标时）</span>
       </div>
     </section>
 
     <section>
-      <h2>输出方向（Agent 输出 → 中文）</h2>
+      <h2>剪贴板与截图</h2>
       <div class="form-row">
         <label>剪贴板自动监听</label>
         <input type="checkbox" v-model="cfg.clipboard.monitor" />
@@ -101,12 +122,12 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { invoke, type AppConfig } from '../shared/api'
+import { invoke, type AppConfig, LANG_CATALOG, langDef } from '../shared/api'
 import '../shared/base.css'
 import './settings.css'
 
 const cfg = ref<AppConfig>(defaultCfg())
-const targetLangsStr = ref('en, ja')
+const selectedLangs = ref<string[]>(['en', 'ja'])
 const saved = ref(false)
 const saveErr = ref('')
 const testing = ref(false)
@@ -115,8 +136,9 @@ const autostartErr = ref('')
 const testOk = ref<boolean | null>(null)
 const testMsg = ref('')
 
-const langsList = computed(() =>
-  targetLangsStr.value.split(/[,，\s]+/).filter(Boolean)
+// 目录顺序展示勾选结果
+const orderedLangs = computed(() =>
+  LANG_CATALOG.map((l) => l.code).filter((c) => selectedLangs.value.includes(c))
 )
 
 function defaultCfg(): AppConfig {
@@ -135,7 +157,8 @@ onMounted(async () => {
     const c = await invoke<AppConfig>('get_config')
     if (!c.deepl) c.deepl = { apiKey: '' }
     cfg.value = c
-    targetLangsStr.value = cfg.value.quickbar.targetLangs.join(', ')
+    selectedLangs.value = [...c.quickbar.targetLangs]
+    if (!selectedLangs.value.length) selectedLangs.value = ['en']
   } catch (e) {
     saveErr.value = String(e)
   }
@@ -159,9 +182,13 @@ async function toggleAutostart() {
 async function save() {
   saved.value = false
   saveErr.value = ''
-  cfg.value.quickbar.targetLangs = langsList.value
-  if (!cfg.value.quickbar.targetLangs.includes(cfg.value.quickbar.defaultTarget)) {
-    cfg.value.quickbar.defaultTarget = cfg.value.quickbar.targetLangs[0] || 'en'
+  if (!selectedLangs.value.length) {
+    saveErr.value = '至少选择一种可用语言'
+    return
+  }
+  cfg.value.quickbar.targetLangs = orderedLangs.value
+  if (!selectedLangs.value.includes(cfg.value.quickbar.defaultTarget)) {
+    cfg.value.quickbar.defaultTarget = orderedLangs.value[0]
   }
   try {
     await invoke('save_config', { config: cfg.value })
@@ -176,7 +203,7 @@ async function test() {
   testing.value = true
   testOk.value = null
   testMsg.value = ''
-  cfg.value.quickbar.targetLangs = langsList.value
+  cfg.value.quickbar.targetLangs = orderedLangs.value
   try {
     await invoke('save_config', { config: cfg.value })
     const res = await invoke<{ ok: boolean; error?: string }>('test_engine')

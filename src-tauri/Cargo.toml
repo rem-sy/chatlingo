@@ -1,6 +1,6 @@
 [package]
 name = "chatlingo"
-version = "0.1.6"
+version = "0.1.7"
 description = "AI 对话双语悬浮翻译器"
 authors = ["rem-sy"]
 edition = "2021"

@@ -38,7 +38,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { listen } from '@tauri-apps/api/event'
-import { invoke, LANG_LABELS } from '../shared/api'
+import { invoke, langLabel } from '../shared/api'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import '../shared/base.css'
@@ -54,7 +54,7 @@ const error = ref('')
 const note = ref('')
 const outputTarget = ref('zh-CN')
 
-const outputLabel = computed(() => LANG_LABELS[outputTarget.value] ?? outputTarget.value)
+const outputLabel = computed(() => langLabel(outputTarget.value))
 const statusText = computed(() =>
   error.value ? '失败' : streaming.value ? '翻译中…' : (compare.value ? llmText.value : translation.value) ? '完成' : '等待'
 )

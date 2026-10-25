@@ -25,7 +25,37 @@ pub trait TranslationEngine: Send + Sync {
     fn translate_stream(&self, params: TranslateParams) -> ChunkStream;
 }
 
+/// 语言码 → 英文全名（写进 Prompt，模型对全名的理解远稳于裸码）
+pub fn lang_name(code: &str) -> String {
+    match code.to_ascii_lowercase().as_str() {
+        "en" | "en-us" | "english" => "English".into(),
+        "ja" | "jp" | "japanese" => "Japanese".into(),
+        "ko" | "korean" => "Korean".into(),
+        "zh" | "zh-cn" | "zh-tw" | "chinese" => "Simplified Chinese".into(),
+        "fr" | "french" => "French".into(),
+        "de" | "german" => "German".into(),
+        "es" | "spanish" => "Spanish".into(),
+        "ru" | "russian" => "Russian".into(),
+        "pt" | "portuguese" => "Portuguese".into(),
+        "it" | "italian" => "Italian".into(),
+        "th" | "thai" => "Thai".into(),
+        "vi" | "vietnamese" => "Vietnamese".into(),
+        "ar" | "arabic" => "Arabic".into(),
+        "id" | "indonesian" => "Indonesian".into(),
+        "hi" | "hindi" => "Hindi".into(),
+        other => {
+            if other.is_empty() {
+                "English".into()
+            } else {
+                // 未知码原样传入，模型通常也认识（如 "uk"、"ms"）
+                other.to_string()
+            }
+        }
+    }
+}
+
 pub fn system_prompt(direction: Direction, target: &str) -> String {
+    let target = lang_name(target);
     match direction {
         Direction::Input => format!(
             "You are a professional translator. Translate the user's message into {target} \

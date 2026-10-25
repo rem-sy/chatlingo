@@ -23,6 +23,22 @@ section {
 .form-row input[type='text'], .form-row input[type='password'] { flex: 1; }
 .form-row select { min-width: 120px; }
 .hint { color: var(--text-dim); font-size: 12px; }
+.lang-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px 10px;
+}
+.lang-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.lang-check input { margin: 0; }
 .test-result { font-size: 12px; }
 .test-result.ok { color: var(--ok); }
 .test-result.bad { color: var(--err); }

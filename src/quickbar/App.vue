@@ -39,7 +39,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { listen } from '@tauri-apps/api/event'
-import { invoke, type AppConfig, LANG_LABELS } from '../shared/api'
+import { invoke, type AppConfig, langLabel } from '../shared/api'
 import '../shared/base.css'
 import './quickbar.css'
 
@@ -54,7 +54,7 @@ const langs = ref<string[]>(['en', 'ja', 'zh-CN'])
 const cfg = ref<AppConfig | null>(null)
 let reqId = 0
 
-const label = (l: string) => LANG_LABELS[l] ?? l
+const label = (l: string) => langLabel(l)
 const targetLabel = computed(() => label(target.value))
 const placeholder = computed(() =>
   target.value === 'zh-CN'
