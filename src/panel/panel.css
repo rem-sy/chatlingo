@@ -6,8 +6,8 @@ html {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  /* 半透明背景：约 62% 透明度，不挡屏幕内容 */
-  background: rgba(30, 31, 36, 0.38);
+  /* 阅读面板：自动触发的阅读场景，高不透明度保证可读性 */
+  background: rgba(30, 31, 36, 0.78);
   border: 1px solid rgba(90, 92, 105, 0.55);
   border-radius: 10px;
   overflow: hidden;

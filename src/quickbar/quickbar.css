@@ -5,7 +5,8 @@ html { background: transparent; }
   flex-direction: column;
   height: 100vh;
   padding: 10px 14px 10px;
-  background: rgba(30, 31, 36, 0.72);
+  /* 翻译面板：交互场景，轻透明不遮挡工作区 */
+  background: rgba(30, 31, 36, 0.55);
   border: 1px solid rgba(90, 92, 105, 0.55);
   border-radius: 10px;
   overflow: hidden;
