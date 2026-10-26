@@ -25,7 +25,7 @@ body { overflow: hidden; }
   padding: 9px 12px;
   transition: border-color 0.12s;
 }
-.entry:hover { border-color: #4a4b57; }
+.entry:hover { border-color: #3f404b; }
 .entry-head {
   display: flex;
   align-items: center;
@@ -39,7 +39,7 @@ body { overflow: hidden; }
   white-space: nowrap;
 }
 .dir.input { color: var(--accent); background: var(--accent-soft); }
-.dir.output { color: #3ecf8e; background: rgba(62, 207, 142, 0.12); }
+.dir.output { color: var(--ok); background: rgba(69, 208, 151, 0.14); }
 .engine { font-size: 11px; color: var(--text-faint); }
 .time {
   font-size: 11px;

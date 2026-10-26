@@ -6,8 +6,8 @@ html, body { background: transparent !important; }
   height: 100vh;
   padding: 10px 14px 10px;
   /* 翻译面板：交互场景，轻透明不遮挡工作区 */
-  background: rgba(30, 31, 36, 0.55);
-  border: 1px solid rgba(90, 92, 105, 0.55);
+  background: rgba(23, 24, 29, 0.6);
+  border: 1px solid rgba(70, 72, 84, 0.6);
   border-radius: 10px;
   overflow: hidden;
   backdrop-filter: blur(10px);
@@ -30,7 +30,7 @@ html, body { background: transparent !important; }
 .dragbar:hover { opacity: 0.9; }
 
 .input-zone {
-  background: rgba(20, 21, 25, 0.82);
+  background: rgba(16, 17, 21, 0.85);
   border: 1px solid var(--border-soft);
   border-radius: 8px;
   padding: 2px 4px;
@@ -80,7 +80,7 @@ textarea:focus { border: none; box-shadow: none; }
   line-height: 1.5;
 }
 .note {
-  color: #ffb86c;
+  color: #e5a866;
   font-size: 12px;
   padding: 5px 2px;
   line-height: 1.5;
@@ -99,25 +99,26 @@ textarea:focus { border: none; box-shadow: none; }
 .snap-btn {
   font-size: 12px;
   padding: 2px 10px;
-  background: #2b2c35;
+  background: var(--bg-hover);
 }
 .lang-pill {
-  padding: 2px 12px;
+  padding: 2px 14px;
   border-radius: 999px;
   font-size: 12px;
   height: 24px;
   color: var(--text-dim);
   border-color: transparent;
-  background: #2b2c35;
+  background: var(--bg-hover);
 }
 .lang-pill:hover {
   color: var(--text);
-  background: #35363f;
+  background: #33343e;
 }
 .lang-pill.active {
-  background: var(--accent-soft);
+  background: var(--accent);
   border-color: var(--accent);
-  color: var(--accent);
+  color: #fff;
+  font-weight: 500;
 }
 .status {
   flex: 1;
