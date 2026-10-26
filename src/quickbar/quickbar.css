@@ -53,6 +53,7 @@ textarea:focus { border: none; }
   align-items: center;
   gap: 10px;
   margin-top: 8px;
+  cursor: move;
 }
 .langs { display: flex; gap: 6px; }
 .snap-btn {

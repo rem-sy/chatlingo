@@ -128,10 +128,11 @@ fn create_windows(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         WebviewWindowBuilder::new(app, QUICKBAR, WebviewUrl::App("quickbar.html".into()))
             .title("ChatLingo QuickBar")
             .inner_size(640.0, 280.0)
+            .min_inner_size(420.0, 200.0)
             .decorations(false)
             .always_on_top(true)
             .skip_taskbar(true)
-            .resizable(false)
+            .resizable(true)
             .visible(false)
             .shadow(true)
             .build()
@@ -166,15 +167,31 @@ fn create_windows(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// 用户手动拖动过面板后记住位置，之后 Alt+T 不再重定位到光标
+static USER_QUICKBAR_POS: Mutex<Option<(i32, i32)>> = Mutex::new(None);
+
 fn show_quickbar(app: &AppHandle) {
     let Some(win) = app.get_webview_window(QUICKBAR) else { return };
-    if let Ok(cursor) = app.cursor_position() {
-        let pos = tauri::PhysicalPosition::new(cursor.x as i32, cursor.y as i32);
-        let _ = win.set_position(tauri::Position::Physical(pos));
+    let user_pos = *USER_QUICKBAR_POS.lock().unwrap();
+    match user_pos {
+        Some((x, y)) => {
+            let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+        }
+        None => {
+            if let Ok(cursor) = app.cursor_position() {
+                let pos = tauri::PhysicalPosition::new(cursor.x as i32, cursor.y as i32);
+                let _ = win.set_position(tauri::Position::Physical(pos));
+            }
+        }
     }
     let _ = win.show();
     let _ = win.set_focus();
     let _ = win.emit("quickbar-reset", ());
+}
+
+#[tauri::command]
+fn save_quickbar_pos(x: i32, y: i32) {
+    *USER_QUICKBAR_POS.lock().unwrap() = Some((x, y));
 }
 
 fn hide_quickbar_win(app: &AppHandle) {
@@ -1141,6 +1158,7 @@ pub fn run() {
             save_config,
             test_engine,
             hide_quickbar,
+            save_quickbar_pos,
             hide_panel,
             minimize_panel,
             open_settings,

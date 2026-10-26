@@ -6,7 +6,6 @@
         v-model="source"
         :placeholder="placeholder"
         rows="3"
-        @keydown="onKeydown"
       ></textarea>
     </div>
     <div v-if="translated || streaming || error" class="divider"></div>
@@ -14,7 +13,7 @@
     <div v-else-if="translated || streaming" class="output-zone">
       <div class="output-text" :class="{ streaming }">{{ display }}</div>
     </div>
-    <div class="toolbar">
+    <div class="toolbar" data-tauri-drag-region>
       <div class="langs">
         <button
           v-for="lang in langs"
@@ -27,8 +26,9 @@
         </button>
       </div>
       <button class="snap-btn" title="框选屏幕区域，识别文字到输入框" @click="snap">截图</button>
-      <div class="status">{{ statusText }}</div>
+      <div class="status" data-tauri-drag-region>{{ statusText }}</div>
       <div class="actions">
+        <button class="primary" :disabled="translating || !source.trim()" @click="submit">{{ translating ? '翻译中…' : '翻译' }}</button>
         <button v-if="translated && !translating" @click="copy">复制</button>
         <button v-if="translated && !translating && target !== 'zh-CN'" class="primary" @click="paste">粘贴回填</button>
       </div>
@@ -39,6 +39,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { listen } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { invoke, type AppConfig, langLabel } from '../shared/api'
 import '../shared/base.css'
 import './quickbar.css'
@@ -72,6 +73,14 @@ const autoDone = ref(false)
 
 onMounted(async () => {
   inputEl.value?.focus()
+  // 拖动后记住位置（防抖），下次 Alt+T 停在用户拖到的位置
+  let moveTimer: number | undefined
+  await getCurrentWindow().onMoved(({ payload }) => {
+    if (moveTimer) clearTimeout(moveTimer)
+    moveTimer = window.setTimeout(() => {
+      invoke('save_quickbar_pos', { x: payload.x, y: payload.y })
+    }, 500)
+  })
   cfg.value = await invoke<AppConfig>('get_config')
   // 统一方向：输入方向目标语言 + 输出方向（中文），去重
   const list = [...cfg.value.quickbar.targetLangs]
@@ -121,13 +130,19 @@ onMounted(async () => {
 
 const note = ref('')
 
-function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+// 面板内任意位置按 Enter 都触发翻译（按钮聚焦时除外，保留按钮原生行为）
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      invoke('hide_quickbar')
+      return
+    }
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return
+    const tag = (e.target as HTMLElement | null)?.tagName
+    if (tag === 'BUTTON' || tag === 'SELECT' || tag === 'OPTION') return
     e.preventDefault()
     submit()
-  } else if (e.key === 'Escape') {
-    invoke('hide_quickbar')
-  }
+  })
 }
 
 async function submit() {
