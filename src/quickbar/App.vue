@@ -1,5 +1,5 @@
 <template>
-  <div class="quickbar" :class="{ translating }">
+  <div class="quickbar" :class="{ translating }" data-tauri-drag-region>
     <div class="input-zone">
       <textarea
         ref="inputEl"
@@ -8,6 +8,7 @@
         rows="3"
       ></textarea>
     </div>
+    <div v-if="note" class="note">{{ note }}</div>
     <div v-if="translated || streaming || error" class="divider"></div>
     <div v-if="error" class="error">{{ error }}</div>
     <div v-else-if="translated || streaming" class="output-zone">
@@ -53,6 +54,7 @@ const error = ref('')
 const target = ref('en')
 const langs = ref<string[]>(['en', 'ja', 'zh-CN'])
 const cfg = ref<AppConfig | null>(null)
+const note = ref('')
 let reqId = 0
 
 const label = (l: string) => langLabel(l)
@@ -64,6 +66,7 @@ const placeholder = computed(() =>
 )
 const display = computed(() => translated.value || '')
 const statusText = computed(() => {
+  if (note.value) return note.value
   if (translating.value) return `翻译中… → ${targetLabel.value}`
   if (error.value) return '失败'
   if (translated.value) return `已译为 ${targetLabel.value}${autoDone.value ? ' · 已回填' : ''}`
@@ -107,6 +110,7 @@ onMounted(async () => {
     source.value = ''
     translated.value = ''
     error.value = ''
+    note.value = ''
     translating.value = false
     streaming.value = false
     autoDone.value = false
@@ -127,8 +131,6 @@ onMounted(async () => {
     inputEl.value?.focus()
   })
 })
-
-const note = ref('')
 
 // 面板内任意位置按 Enter 都触发翻译（按钮聚焦时除外，保留按钮原生行为）
 if (typeof window !== 'undefined') {
