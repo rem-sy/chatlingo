@@ -129,3 +129,29 @@ textarea:focus { border: none; box-shadow: none; }
   text-overflow: ellipsis;
 }
 .actions { display: flex; gap: 6px; }
+
+.multi-block {
+  background: rgba(16, 17, 21, 0.85);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+}
+.multi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.multi-tag {
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.multi-copy {
+  height: 20px;
+  padding: 0 8px;
+  font-size: 11px;
+}

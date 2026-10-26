@@ -444,28 +444,35 @@ async fn run_translation(
         }
         r
     } else {
-        // 多引擎：全部并行；结果通过 compare 事件并列展示
+        // 多引擎：全部并行，结果在调用窗口内堆叠/并列展示（不弹另一个面板）
         let kinds: Vec<&str> = engines_on.iter().map(|k| k.id()).collect();
         eprintln!("[chatlingo] engines: multi {:?}", kinds);
-        let panel = app.get_webview_window(PANEL);
-        if let Some(p) = &panel {
-            let _ = p.emit(
-                "panel-start",
-                serde_json::json!({
-                    "original": text,
-                    "outputTarget": target,
-                    "compare": true,
-                    "engines": kinds,
-                }),
-            );
+        let win = app.get_webview_window(window);
+        if window == PANEL {
+            if let Some(p) = &win {
+                let _ = p.emit(
+                    "panel-start",
+                    serde_json::json!({
+                        "original": text,
+                        "outputTarget": target,
+                        "compare": true,
+                        "engines": kinds,
+                    }),
+                );
+            }
+            show_panel_bottom_right(app);
+        } else if let Some(b) = &win {
+            let id = ACTIVE_REQ.load(std::sync::atomic::Ordering::SeqCst);
+            let _ = b.emit("quickbar-multi-start", serde_json::json!({ "id": id, "engines": kinds }));
         }
-        show_panel_bottom_right(app);
         let mut tasks = Vec::new();
         for kind in engines_on {
-            let app2 = app.clone();
             let cfg2 = cfg.clone();
             let text2 = text.clone();
             let target2 = target.clone();
+            let win2 = win.clone();
+            let is_quickbar = window == QUICKBAR;
+            let id = ACTIVE_REQ.load(std::sync::atomic::Ordering::SeqCst);
             tasks.push(tauri::async_runtime::spawn(async move {
                 let mut stream = make_stream(kind, &cfg2, text2, target2, direction);
                 use futures_util::StreamExt;
@@ -474,11 +481,18 @@ async fn run_translation(
                     match item {
                         Ok(chunk) => {
                             full.push_str(&chunk);
-                            if let Some(w) = app2.get_webview_window(PANEL) {
-                                let _ = w.emit(
-                                    "panel-chunk",
-                                    serde_json::json!({ "engine": kind.id(), "text": chunk }),
-                                );
+                            if let Some(w) = &win2 {
+                                if is_quickbar {
+                                    let _ = w.emit(
+                                        "quickbar-chunk",
+                                        serde_json::json!({ "id": id, "engine": kind.id(), "text": chunk }),
+                                    );
+                                } else {
+                                    let _ = w.emit(
+                                        "panel-chunk",
+                                        serde_json::json!({ "engine": kind.id(), "text": chunk }),
+                                    );
+                                }
                             }
                         }
                         Err(e) => return (kind, Err(e)),
@@ -491,7 +505,7 @@ async fn run_translation(
         let mut any_ok = false;
         let mut primary: Option<String> = None;
         for t in tasks {
-            let (kind, r) = t.await.unwrap_or((kind_of_id("llm").unwrap(), Err("任务崩溃".into())));
+            let (kind, r) = t.await.unwrap_or((EngineKind::Llm, Err("任务崩溃".into())));
             match r {
                 Ok(translated) => {
                     any_ok = true;
@@ -509,14 +523,16 @@ async fn run_translation(
                 Err(e) => errs.push(format!("{}: {e}", kind.label())),
             }
         }
-        if let Some(p) = &panel {
-            let _ = p.emit(
-                "panel-done",
-                serde_json::json!({
-                    "ok": any_ok,
-                    "error": if errs.is_empty() { serde_json::Value::Null } else { serde_json::json!(errs.join("；")) },
-                }),
-            );
+        if window == PANEL {
+            if let Some(p) = &win {
+                let _ = p.emit(
+                    "panel-done",
+                    serde_json::json!({
+                        "ok": any_ok,
+                        "error": if errs.is_empty() { serde_json::Value::Null } else { serde_json::json!(errs.join("；")) },
+                    }),
+                );
+            }
         }
         match primary {
             Some(p) => Ok(p),
@@ -524,21 +540,11 @@ async fn run_translation(
         }
     };
 
-    let _ = primary_engine_unused();
     if result.is_ok() {
         state(app).cache.lock().unwrap().put(cache_key, result.as_ref().unwrap().clone());
     }
     state(app).in_flight.lock().unwrap().remove(&cache_key);
     result
-}
-
-fn primary_engine_unused() {}
-fn kind_of_id(id: &str) -> Option<EngineKind> {
-    match id {
-        "llm" => Some(EngineKind::Llm),
-        "deepl" => Some(EngineKind::Deepl),
-        _ => Some(EngineKind::Aliyun),
-    }
 }
 
 static ACTIVE_REQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);

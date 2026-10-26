@@ -10,8 +10,17 @@
       ></textarea>
     </div>
     <div v-if="note" class="note">{{ note }}</div>
-    <div v-if="translated || streaming || error" class="divider"></div>
+    <div v-if="translated || streaming || error || multiOrder.length" class="divider"></div>
     <div v-if="error" class="error">{{ error }}</div>
+    <div v-else-if="multiOrder.length" class="output-zone">
+      <div v-for="eng in multiOrder" :key="eng" class="multi-block">
+        <div class="multi-head">
+          <span class="multi-tag">{{ engName(eng) }}</span>
+          <button class="multi-copy" @click="copy(multiTexts[eng] || '')">复制</button>
+        </div>
+        <div class="output-text">{{ multiTexts[eng] }}</div>
+      </div>
+    </div>
     <div v-else-if="translated || streaming" class="output-zone">
       <div class="output-text" :class="{ streaming }">{{ display }}</div>
     </div>
@@ -56,7 +65,12 @@ const target = ref('en')
 const langs = ref<string[]>(['en', 'ja', 'zh-CN'])
 const cfg = ref<AppConfig | null>(null)
 const note = ref('')
+const multiOrder = ref<string[]>([])
+const multiTexts = ref<Record<string, string>>({})
 let reqId = 0
+
+const ENGINE_NAMES: Record<string, string> = { llm: '大模型', deepl: 'DeepL', aliyun: '阿里云' }
+const engName = (id: string) => ENGINE_NAMES[id] ?? id
 
 const label = (l: string) => langLabel(l)
 const targetLabel = computed(() => label(target.value))
@@ -92,10 +106,19 @@ onMounted(async () => {
   langs.value = list
   target.value = cfg.value.quickbar.defaultTarget
 
-  await listen<{ id: number; text: string }>('quickbar-chunk', (e) => {
+  await listen<{ id: number; text: string; engine?: string }>('quickbar-chunk', (e) => {
     if (e.payload.id !== reqId) return
     streaming.value = true
-    translated.value += e.payload.text
+    if (e.payload.engine) {
+      multiTexts.value[e.payload.engine] = (multiTexts.value[e.payload.engine] || '') + e.payload.text
+    } else {
+      translated.value += e.payload.text
+    }
+  })
+  await listen<{ id: number; engines: string[] }>('quickbar-multi-start', (e) => {
+    if (e.payload.id !== reqId) return
+    multiOrder.value = e.payload.engines
+    multiTexts.value = {}
   })
   await listen<{ id: number; ok: boolean; error?: string; pasted?: boolean }>('quickbar-done', (e) => {
     if (e.payload.id !== reqId) return
@@ -112,6 +135,8 @@ onMounted(async () => {
     translated.value = ''
     error.value = ''
     note.value = ''
+    multiOrder.value = []
+    multiTexts.value = {}
     translating.value = false
     streaming.value = false
     autoDone.value = false
@@ -156,6 +181,8 @@ async function submit() {
   translated.value = ''
   error.value = ''
   autoDone.value = false
+  multiOrder.value = []
+  multiTexts.value = {}
   reqId += 1
   await invoke('submit_input', { text, target: target.value, id: reqId })
 }
