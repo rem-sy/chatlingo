@@ -1,5 +1,6 @@
 pub mod deepl;
 pub mod openai;
+pub mod tencent;
 pub mod vision;
 
 use futures_util::Stream;

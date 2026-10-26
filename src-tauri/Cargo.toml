@@ -1,6 +1,6 @@
 [package]
 name = "chatlingo"
-version = "0.2.8"
+version = "0.2.9"
 description = "AI 对话双语悬浮翻译器"
 authors = ["rem-sy"]
 edition = "2021"
@@ -30,6 +30,9 @@ arboard = "3"
 xcap = "0.7"
 image = { version = "0.25", default-features = false, features = ["png"] }
 base64 = "0.22"
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
 
 [profile.release]
 strip = true

@@ -51,6 +51,22 @@
     </section>
 
     <section>
+      <h2>最终兜底（腾讯云机器翻译，可选）</h2>
+      <div class="form-row">
+        <label>SecretId</label>
+        <input v-model="cfg.tencent.secretId" type="password" placeholder="访问管理 cam/capi 里创建" />
+      </div>
+      <div class="form-row">
+        <label>SecretKey</label>
+        <input v-model="cfg.tencent.secretKey" type="password" placeholder="40 位密钥" />
+      </div>
+      <div class="form-row">
+        <label></label>
+        <span class="hint">大模型和 DeepL 都失败时自动用腾讯云兜底（国内直连，个人每月 500 万字符免费）</span>
+      </div>
+    </section>
+
+    <section>
       <h2>语言</h2>
       <div class="form-row">
         <label>可用语言</label>
@@ -198,6 +214,7 @@ function defaultCfg(): AppConfig {
   return {
     engine: { baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat' },
     deepl: { apiKey: '' },
+    tencent: { secretId: '', secretKey: '' },
     compareMode: false,
     quickbar: { hotkey: 'alt+t', targetLangs: ['en', 'ja'], defaultTarget: 'en', autoCopy: true, autoPaste: true },
     clipboard: { monitor: true, minLength: 20, visionModel: '' },
@@ -213,6 +230,7 @@ onMounted(async () => {
   try {
     const c = await invoke<AppConfig>('get_config')
     if (!c.deepl) c.deepl = { apiKey: '' }
+    if (!c.tencent) c.tencent = { secretId: '', secretKey: '' }
     cfg.value = c
     selectedLangs.value = [...c.quickbar.targetLangs]
     if (!selectedLangs.value.length) selectedLangs.value = ['en']

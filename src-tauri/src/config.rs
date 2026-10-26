@@ -109,11 +109,28 @@ impl Default for DeeplConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TencentConfig {
+    #[serde(default)]
+    pub secret_id: String,
+    #[serde(default)]
+    pub secret_key: String,
+}
+
+impl Default for TencentConfig {
+    fn default() -> Self {
+        TencentConfig { secret_id: String::new(), secret_key: String::new() }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     #[serde(default)]
     pub engine: EngineConfig,
     #[serde(default)]
     pub deepl: DeeplConfig,
+    #[serde(default)]
+    pub tencent: TencentConfig,
     /// 输出方向：大模型与 DeepL 同时翻译、面板并列对比
     #[serde(default)]
     pub compare_mode: bool,
@@ -138,6 +155,7 @@ impl Default for AppConfig {
                 model: default_model(),
             },
             deepl: DeeplConfig::default(),
+            tencent: TencentConfig::default(),
             compare_mode: false,
             quickbar: QuickbarConfig {
                 hotkey: default_hotkey(),

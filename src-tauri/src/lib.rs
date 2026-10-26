@@ -317,7 +317,7 @@ async fn run_translation(
         use futures_util::StreamExt;
         let mut stream = engine.translate_stream(TranslateParams {
             text: text.clone(),
-            target_lang: target,
+            target_lang: target.clone(),
             direction,
         });
         let win = app.get_webview_window(window);
@@ -352,6 +352,62 @@ async fn run_translation(
             );
             result = Ok(full);
             used_engine = "deepl";
+        }
+    }
+
+    // 降级链 2：仍失败且腾讯云已配置 → 最终兜底（国内直连，永远可达）
+    let tencent_ready = !cfg.tencent.secret_id.is_empty() && !cfg.tencent.secret_key.is_empty();
+    if result.is_err() && tencent_ready {
+        let prev_err = result.clone().unwrap_err();
+        eprintln!("[chatlingo] DeepL failed, falling back to Tencent");
+        if let Some(win) = app.get_webview_window(window) {
+            let _ = win.emit(
+                "engine-note",
+                serde_json::json!({ "note": "DeepL 失败，已用腾讯云兜底" }),
+            );
+        }
+        let engine = engines::tencent::TencentEngine::new(
+            cfg.tencent.secret_id.clone(),
+            cfg.tencent.secret_key.clone(),
+        );
+        use futures_util::StreamExt;
+        let mut stream = engine.translate_stream(TranslateParams {
+            text: text.clone(),
+            target_lang: target.clone(),
+            direction,
+        });
+        let win = app.get_webview_window(window);
+        let mut full = String::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(chunk) => {
+                    full.push_str(&chunk);
+                    if let Some(w) = &win {
+                        if window == QUICKBAR {
+                            let id = ACTIVE_REQ.load(std::sync::atomic::Ordering::SeqCst);
+                            let _ = w.emit(
+                                "quickbar-chunk",
+                                serde_json::json!({ "id": id, "text": chunk }),
+                            );
+                        } else {
+                            let _ = w.emit("panel-chunk", serde_json::json!({ "text": chunk }));
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[chatlingo] tencent translate error: {e}");
+                    result = Err(format!("{prev_err}；腾讯云: {e}"));
+                    break;
+                }
+            }
+        }
+        if result.is_err() && !full.trim().is_empty() {
+            eprintln!(
+                "[chatlingo] translate ok via Tencent: {} chars",
+                full.chars().count()
+            );
+            result = Ok(full);
+            used_engine = "tencent";
         }
     }
     // 成功 → 写入缓存与历史；无论如何清掉 in-flight 标记
@@ -474,7 +530,20 @@ async fn test_engine(app: AppHandle) -> Result<Value, String> {
             Err(e) => (false, e),
         }
     };
-    let ok = llm.0 || deepl.0;
+    // 腾讯云最终兜底
+    let tencent = if cfg.tencent.secret_id.is_empty() || cfg.tencent.secret_key.is_empty() {
+        (false, "未填写密钥".to_string())
+    } else {
+        let engine = engines::tencent::TencentEngine::new(
+            cfg.tencent.secret_id.clone(),
+            cfg.tencent.secret_key.clone(),
+        );
+        match engine.quick_check().await {
+            Ok(()) => (true, String::new()),
+            Err(e) => (false, e),
+        }
+    };
+    let ok = llm.0 || deepl.0 || tencent.0;
     let mut parts = vec![];
     if !llm.0 {
         parts.push(format!("大模型: {}", llm.1));
@@ -485,6 +554,11 @@ async fn test_engine(app: AppHandle) -> Result<Value, String> {
         parts.push(format!("DeepL: {}", deepl.1));
     } else {
         parts.push("DeepL: ✓".into());
+    }
+    if !tencent.0 {
+        parts.push(format!("腾讯云: {}", tencent.1));
+    } else {
+        parts.push("腾讯云: ✓".into());
     }
     Ok(serde_json::json!({ "ok": ok, "error": parts.join("；") }))
 }

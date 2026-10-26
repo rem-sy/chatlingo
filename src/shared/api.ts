@@ -13,9 +13,15 @@ export interface DeeplConfig {
   apiKey: string
 }
 
+export interface TencentConfig {
+  secretId: string
+  secretKey: string
+}
+
 export interface AppConfig {
   engine: EngineConfig
   deepl: DeeplConfig
+  tencent: TencentConfig
   compareMode: boolean
   quickbar: {
     hotkey: string
