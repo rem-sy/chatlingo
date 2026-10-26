@@ -1,4 +1,4 @@
-html { background: transparent; }
+html, body { background: transparent !important; }
 
 .quickbar {
   display: flex;

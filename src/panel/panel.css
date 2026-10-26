@@ -1,6 +1,4 @@
-html {
-  background: transparent;
-}
+html, body { background: transparent !important; }
 
 .panel {
   display: flex;
