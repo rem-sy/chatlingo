@@ -10,6 +10,23 @@
   overflow: hidden;
 }
 
+.dragbar {
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: 10px;
+  cursor: move;
+  user-select: none;
+  margin: -5px 0 -3px;
+  opacity: 0.35;
+  transition: opacity 0.15s;
+}
+.dragbar:hover {
+  opacity: 0.9;
+}
+
 textarea {
   width: 100%;
   resize: none;

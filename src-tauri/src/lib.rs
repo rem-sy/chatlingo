@@ -173,17 +173,23 @@ static USER_QUICKBAR_POS: Mutex<Option<(i32, i32)>> = Mutex::new(None);
 fn show_quickbar(app: &AppHandle) {
     let Some(win) = app.get_webview_window(QUICKBAR) else { return };
     let user_pos = *USER_QUICKBAR_POS.lock().unwrap();
-    match user_pos {
-        Some((x, y)) => {
-            let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-        }
-        None => {
-            if let Ok(cursor) = app.cursor_position() {
-                let pos = tauri::PhysicalPosition::new(cursor.x as i32, cursor.y as i32);
-                let _ = win.set_position(tauri::Position::Physical(pos));
-            }
-        }
+    let mut pos = match user_pos {
+        Some((x, y)) => (x, y),
+        None => match app.cursor_position() {
+            Ok(c) => (c.x as i32, c.y as i32),
+            Err(_) => (200, 200),
+        },
+    };
+    // 钳制到主屏可视范围内，防止记住的出界坐标把面板藏到屏幕外
+    if let (Ok(Some(monitor)), Ok(size)) = (app.primary_monitor(), win.outer_size()) {
+        let mon = monitor.size();
+        let mon_pos = monitor.position();
+        let max_x = mon_pos.x + mon.width as i32 - size.width as i32;
+        let max_y = mon_pos.y + mon.height as i32 - size.height as i32;
+        pos.0 = pos.0.clamp(mon_pos.x, max_x.max(mon_pos.x));
+        pos.1 = pos.1.clamp(mon_pos.y, max_y.max(mon_pos.y));
     }
+    let _ = win.set_position(tauri::PhysicalPosition::new(pos.0, pos.1));
     let _ = win.show();
     let _ = win.set_focus();
     let _ = win.emit("quickbar-reset", ());
@@ -478,6 +484,11 @@ async fn test_engine(app: AppHandle) -> Result<Value, String> {
         parts.push("DeepL: ✓".into());
     }
     Ok(serde_json::json!({ "ok": ok, "error": parts.join("；") }))
+}
+
+#[tauri::command]
+fn debug_log(msg: String) {
+    eprintln!("[chatlingo][js] {msg}");
 }
 
 #[tauri::command]
@@ -1159,6 +1170,7 @@ pub fn run() {
             test_engine,
             hide_quickbar,
             save_quickbar_pos,
+            debug_log,
             hide_panel,
             minimize_panel,
             open_settings,

@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "ChatLingo 各窗口的默认能力",
   "windows": ["quickbar", "panel", "settings", "history", "snip"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:window:allow-start-dragging"]
 }

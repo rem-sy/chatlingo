@@ -7,18 +7,21 @@ pub struct DeeplEngine {
 }
 
 /// 我们内部语言码 → DeepL 目标语言码
-pub fn to_deepl_lang(lang: &str) -> &'static str {
+/// 目录中 DeepL 不支持的语种返回 None（泰/越/阿/印地）
+pub fn to_deepl_lang(lang: &str) -> Option<&'static str> {
     match lang.to_ascii_lowercase().as_str() {
-        "zh" | "zh-cn" | "zh-tw" | "chinese" => "ZH",
-        "ja" | "jp" | "japanese" => "JA",
-        "en" | "english" => "EN-US",
-        "ko" | "korean" => "KO",
-        "fr" | "french" => "FR",
-        "de" | "german" => "DE",
-        "es" | "spanish" => "ES",
-        "pt" | "portuguese" => "PT-BR",
-        "ru" | "russian" => "RU",
-        _ => "EN-US",
+        "zh" | "zh-cn" | "zh-tw" | "chinese" => Some("ZH"),
+        "ja" | "jp" | "japanese" => Some("JA"),
+        "en" | "en-us" | "english" => Some("EN-US"),
+        "ko" | "korean" => Some("KO"),
+        "fr" | "french" => Some("FR"),
+        "de" | "german" => Some("DE"),
+        "es" | "spanish" => Some("ES"),
+        "pt" | "portuguese" => Some("PT-BR"),
+        "ru" | "russian" => Some("RU"),
+        "it" | "italian" => Some("IT"),
+        "id" | "indonesian" => Some("ID"),
+        _ => None,
     }
 }
 
