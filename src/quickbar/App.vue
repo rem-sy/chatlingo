@@ -146,20 +146,6 @@ if (typeof window !== 'undefined') {
     e.preventDefault()
     submit()
   })
-
-  // 手动拖动兜底：左键按在拖动区（data-tauri-drag-region）空白处即拖动窗口
-  // capture 阶段注册，抢在内建 drag-region 脚本 stopPropagation 之前
-  window.addEventListener(
-    'mousedown',
-    (e) => {
-      if (e.button !== 0) return
-      const el = e.target as HTMLElement
-      if (!el?.closest?.('[data-tauri-drag-region]')) return
-      if (el.closest('button, textarea, input, select, a, .output-text, .original-text')) return
-      getCurrentWindow().startDragging()
-    },
-    true
-  )
 }
 
 async function submit() {
