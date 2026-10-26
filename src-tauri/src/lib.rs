@@ -136,6 +136,7 @@ fn create_windows(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             .maximizable(false)
             .visible(false)
             .shadow(true)
+            .transparent(true)
             .build()
     );
     try_step!(

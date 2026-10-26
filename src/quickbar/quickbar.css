@@ -1,12 +1,16 @@
+html { background: transparent; }
+
 .quickbar {
   display: flex;
   flex-direction: column;
   height: 100vh;
   padding: 10px 14px 10px;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: rgba(30, 31, 36, 0.72);
+  border: 1px solid rgba(90, 92, 105, 0.55);
   border-radius: 10px;
   overflow: hidden;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .dragbar {
