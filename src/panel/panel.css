@@ -37,6 +37,7 @@ button.mini {
   font-size: 12px;
   height: 22px;
   border-radius: 5px;
+  background: #2b2c35;
 }
 
 .panel-body {

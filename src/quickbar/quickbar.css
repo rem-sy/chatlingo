@@ -29,6 +29,13 @@ html, body { background: transparent !important; }
 }
 .dragbar:hover { opacity: 0.9; }
 
+.input-zone {
+  background: rgba(20, 21, 25, 0.82);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 2px 4px;
+}
+
 textarea {
   width: 100%;
   resize: none;
@@ -38,7 +45,7 @@ textarea {
   color: var(--text);
   font-size: 15px;
   line-height: 1.55;
-  padding: 4px 2px;
+  padding: 4px 6px;
   user-select: text;
 }
 textarea:focus { border: none; box-shadow: none; }
@@ -92,6 +99,7 @@ textarea:focus { border: none; box-shadow: none; }
 .snap-btn {
   font-size: 12px;
   padding: 2px 10px;
+  background: #2b2c35;
 }
 .lang-pill {
   padding: 2px 12px;
@@ -100,11 +108,11 @@ textarea:focus { border: none; box-shadow: none; }
   height: 24px;
   color: var(--text-dim);
   border-color: transparent;
-  background: transparent;
+  background: #2b2c35;
 }
 .lang-pill:hover {
   color: var(--text);
-  background: var(--bg-hover);
+  background: #35363f;
 }
 .lang-pill.active {
   background: var(--accent-soft);
