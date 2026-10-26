@@ -3,12 +3,17 @@
   --bg-soft: #26272e;
   --bg-hover: #31323b;
   --border: #3a3b45;
+  --border-soft: #2e2f38;
   --text: #e8e9ed;
   --text-dim: #9a9ba6;
+  --text-faint: #6c6d78;
   --accent: #4f8cff;
+  --accent-strong: #6b9fff;
   --accent-soft: rgba(79, 140, 255, 0.15);
   --ok: #3ecf8e;
   --err: #ff6b6b;
+  --radius: 8px;
+  --radius-sm: 6px;
 }
 
 * { box-sizing: border-box; }
@@ -18,33 +23,62 @@ html, body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif;
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
   font-size: 14px;
+  line-height: 1.5;
   user-select: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
+
+::selection { background: rgba(79, 140, 255, 0.35); }
+
+/* 细滚动条 */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #3c3d47; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #4a4b57; }
 
 button {
   font-family: inherit;
   background: var(--bg-soft);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 4px 12px;
+  height: 26px;
   cursor: pointer;
   font-size: 12.5px;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  white-space: nowrap;
 }
-button:hover { background: var(--bg-hover); }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-button:disabled { opacity: 0.5; cursor: default; }
+button:hover { background: var(--bg-hover); border-color: #464753; }
+button:active { background: #282932; }
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+button.primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+button.primary:active { background: #3f7ae8; }
+button:disabled { opacity: 0.45; cursor: default; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 input[type='text'], input[type='password'], textarea, select {
   font-family: inherit;
   background: var(--bg-soft);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
   font-size: 13px;
   outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
 }
-input:focus, textarea:focus { border-color: var(--accent); }
+input::placeholder, textarea::placeholder { color: var(--text-faint); }
+input:focus, textarea:focus, select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+input[type='checkbox'] { accent-color: var(--accent); }
+select { cursor: pointer; }
