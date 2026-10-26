@@ -132,16 +132,17 @@ impl AliyunEngine {
         // 按参数名字典序排列
         let mut params: Vec<(String, String)> = vec![
             ("AccessKeyId".into(), self.access_key_id.clone()),
-            ("Action".into(), "Translate".into()),
+            ("Action".into(), "TranslateGeneral".into()),
             ("FormatType".into(), "text".into()),
             ("SignatureMethod".into(), "HMAC-SHA1".into()),
             ("SignatureNonce".into(), nonce()),
             ("SignatureVersion".into(), "1.0".into()),
+            ("Scene".into(), "general".into()),
             ("SourceLanguage".into(), "auto".into()),
             ("SourceText".into(), text.to_string()),
             ("TargetLanguage".into(), target.to_string()),
             ("Timestamp".into(), iso_time),
-            ("Version".into(), "2018-01-02".into()),
+            ("Version".into(), "2018-10-12".into()),
         ];
         params.sort_by(|a, b| a.0.cmp(&b.0));
         let query = params
@@ -164,16 +165,34 @@ impl AliyunEngine {
         if !status.is_success() {
             return Err(format!("HTTP {status}: {}", &body[..body.len().min(300)]));
         }
-        let v: Value = serde_json::from_str(&body).map_err(|e| format!("响应解析失败: {e}"))?;
-        if let Some(code) = v.get("Code").and_then(|c| c.as_str()) {
-            let msg = v.get("Message").and_then(|m| m.as_str()).unwrap_or("");
-            return Err(format!("{code}: {msg}"));
+        // RPC 接口返回 XML：<TranslateGeneralResponse>...<Data><Translated>...</Translated>...
+        // 成功时 Code=200，非 200 才是错误
+        if let Some(code) = extract_xml_tag(&body, "Code") {
+            if code != "200" {
+                let msg = extract_xml_tag(&body, "Message").unwrap_or_default();
+                return Err(format!("{code}: {msg}"));
+            }
         }
-        v.pointer("/Data/Translated")
-            .and_then(|t| t.as_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| "响应中没有译文".to_string())
-    }
+        extract_xml_tag(&body, "Translated")
+            .map(|s| xml_unescape(&s))
+            .ok_or_else(|| format!("响应中没有译文：{}", &body[..body.len().min(200)]))
+}
+}
+
+fn extract_xml_tag(body: &str, tag: &str) -> Option<String> {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let start = body.find(&open)? + open.len();
+    let end = body[start..].find(&close)? + start;
+    Some(body[start..end].to_string())
+}
+
+fn xml_unescape(s: &str) -> String {
+    s.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
 }
 
 impl super::TranslationEngine for AliyunEngine {

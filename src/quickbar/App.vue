@@ -1,13 +1,15 @@
 <template>
   <div class="quickbar" :class="{ translating }" data-tauri-drag-region>
     <div class="dragbar" data-tauri-drag-region title="按住拖动">⠿</div>
-    <div class="input-zone">
+    <div class="input-zone" :style="{ height: inputH + 'px' }">
       <textarea
         ref="inputEl"
         v-model="source"
         :placeholder="placeholder"
-        rows="3"
       ></textarea>
+    </div>
+    <div class="splitter" title="拖动调整输入区高度" @mousedown="startSplitDrag">
+      <span></span>
     </div>
     <div v-if="note" class="note">{{ note }}</div>
     <div v-if="translated || streaming || error || multiOrder.length" class="divider"></div>
@@ -157,6 +159,26 @@ onMounted(async () => {
     inputEl.value?.focus()
   })
 })
+
+// ---------- 分界线拖拽：调整输入/输出比例 ----------
+const inputH = ref(Number(localStorage.getItem('qb-input-h')) || 110)
+
+function startSplitDrag(e: MouseEvent) {
+  e.preventDefault()
+  const startY = e.clientY
+  const startH = inputH.value
+  const maxH = window.innerHeight - 170
+  const onMove = (ev: MouseEvent) => {
+    inputH.value = Math.min(Math.max(startH + (ev.clientY - startY), 56), Math.max(maxH, 56))
+  }
+  const onUp = () => {
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+    localStorage.setItem('qb-input-h', String(inputH.value))
+  }
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
+}
 
 // 面板内任意位置按 Enter 都触发翻译（按钮聚焦时除外，保留按钮原生行为）
 if (typeof window !== 'undefined') {
