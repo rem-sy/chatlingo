@@ -5,7 +5,7 @@ pub mod store;
 
 use config::AppConfig;
 use engines::openai::OpenAiCompatEngine;
-use engines::{Direction, TranslationEngine, TranslateParams};
+use engines::{ChunkStream, Direction, TranslationEngine, TranslateParams};
 use base64::Engine as _;
 use serde_json::Value;
 use std::collections::HashSet;
@@ -236,6 +236,120 @@ fn hide_panel_win(app: &AppHandle) {
 
 // ---------- 翻译执行 ----------
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EngineKind {
+    Llm,
+    Deepl,
+    Aliyun,
+}
+
+impl EngineKind {
+    fn id(self) -> &'static str {
+        match self {
+            EngineKind::Llm => "llm",
+            EngineKind::Deepl => "deepl",
+            EngineKind::Aliyun => "aliyun",
+        }
+    }
+    fn label(self) -> &'static str {
+        match self {
+            EngineKind::Llm => "大模型",
+            EngineKind::Deepl => "DeepL",
+            EngineKind::Aliyun => "阿里云",
+        }
+    }
+}
+
+/// 用户启用且密钥齐全的引擎，按设置顺序
+fn enabled_engines(cfg: &AppConfig) -> Vec<EngineKind> {
+    let mut v = Vec::new();
+    if cfg.engine.enabled && !cfg.engine.api_key.is_empty() {
+        v.push(EngineKind::Llm);
+    }
+    if cfg.deepl.enabled && !cfg.deepl.api_key.is_empty() {
+        v.push(EngineKind::Deepl);
+    }
+    if cfg.aliyun.enabled && !cfg.aliyun.access_key_id.is_empty() && !cfg.aliyun.access_key_secret.is_empty() {
+        v.push(EngineKind::Aliyun);
+    }
+    v
+}
+
+fn make_stream(
+    kind: EngineKind,
+    cfg: &AppConfig,
+    text: String,
+    target: String,
+    direction: Direction,
+) -> ChunkStream {
+    match kind {
+        EngineKind::Llm => {
+            let engine = OpenAiCompatEngine::new(
+                cfg.engine.base_url.clone(),
+                cfg.engine.api_key.clone(),
+                cfg.engine.model.clone(),
+            );
+            engine.translate_stream(TranslateParams { text, target_lang: target, direction })
+        }
+        EngineKind::Deepl => {
+            let engine = engines::deepl::DeeplEngine::new(cfg.deepl.api_key.clone());
+            engine.translate_stream(TranslateParams { text, target_lang: target, direction })
+        }
+        EngineKind::Aliyun => {
+            let engine = engines::aliyun::AliyunEngine::new(
+                cfg.aliyun.access_key_id.clone(),
+                cfg.aliyun.access_key_secret.clone(),
+            );
+            engine.translate_stream(TranslateParams { text, target_lang: target, direction })
+        }
+    }
+}
+
+/// 单引擎流式翻译：chunk 推送到窗口；成功返回全文
+async fn run_single_stream(
+    app: &AppHandle,
+    window: &str,
+    kind: EngineKind,
+    text: String,
+    target: String,
+    direction: Direction,
+    cfg: &AppConfig,
+    tag_chunks: bool,
+) -> Result<String, String> {
+    let win = app.get_webview_window(window).ok_or("窗口不存在")?.clone();
+    let mut stream = make_stream(kind, cfg, text, target, direction);
+    use futures_util::StreamExt;
+    let mut full = String::new();
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(chunk) => {
+                full.push_str(&chunk);
+                if window == QUICKBAR {
+                    let id = ACTIVE_REQ.load(std::sync::atomic::Ordering::SeqCst);
+                    let _ = win.emit(
+                        "quickbar-chunk",
+                        serde_json::json!({ "id": id, "text": chunk }),
+                    );
+                } else if tag_chunks {
+                    let _ = win.emit(
+                        "panel-chunk",
+                        serde_json::json!({ "engine": kind.id(), "text": chunk }),
+                    );
+                } else {
+                    let _ = win.emit("panel-chunk", serde_json::json!({ "text": chunk }));
+                }
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    if full.trim().is_empty() {
+        return Err("引擎返回了空结果".into());
+    }
+    Ok(full)
+}
+
+/// 主入口：按启用的引擎执行翻译。
+/// 单引擎 → 该引擎流式直出；多引擎 → 全部并行翻译，全部成功(或部分成功)时并列展示。
 async fn run_translation(
     app: &AppHandle,
     window: &str,
@@ -244,10 +358,9 @@ async fn run_translation(
     direction: Direction,
 ) -> Result<String, String> {
     let cfg = state(app).config.lock().unwrap().clone();
-    let llm_ready = !cfg.engine.api_key.is_empty();
-    let deepl_ready = !cfg.deepl.api_key.is_empty();
-    if !llm_ready && !deepl_ready {
-        return Err("未配置任何翻译引擎，请先在设置中填写".into());
+    let engines_on = enabled_engines(&cfg);
+    if engines_on.is_empty() {
+        return Err("未启用任何翻译引擎，请先在设置中开启".into());
     }
 
     // ---- 译文缓存 ----
@@ -292,184 +405,140 @@ async fn run_translation(
         }
     }
 
-    let mut result = if llm_ready {
-        eprintln!(
-            "[chatlingo] engine: primary=LLM url={} model={}",
-            cfg.engine.base_url, cfg.engine.model
-        );
-        run_engine_stream(app, window, text.clone(), target.clone(), direction, &cfg).await
+    let result = if engines_on.len() == 1 {
+        let kind = engines_on[0];
+        eprintln!("[chatlingo] engine: {}", kind.label());
+        if window == PANEL {
+            if let Some(p) = app.get_webview_window(PANEL) {
+                let _ = p.emit(
+                    "panel-start",
+                    serde_json::json!({
+                        "original": text,
+                        "outputTarget": target,
+                        "compare": false,
+                    }),
+                );
+            }
+            show_panel_bottom_right(app);
+        }
+        let r = run_single_stream(app, window, kind, text.clone(), target.clone(), direction, &cfg, false).await;
+        if window == PANEL {
+            if let Some(p) = app.get_webview_window(PANEL) {
+                let _ = p.emit(
+                    "panel-done",
+                    match &r {
+                        Ok(_) => serde_json::json!({ "ok": true }),
+                        Err(e) => serde_json::json!({ "ok": false, "error": e }),
+                    },
+                );
+            }
+        }
+        if let Ok(translated) = &r {
+            state(app).history.add(
+                app,
+                if direction == Direction::Input { "input" } else { "output" },
+                &text,
+                translated,
+                kind.id(),
+            );
+        }
+        r
     } else {
-        Err("LLM 未配置".into())
+        // 多引擎：全部并行；结果通过 compare 事件并列展示
+        let kinds: Vec<&str> = engines_on.iter().map(|k| k.id()).collect();
+        eprintln!("[chatlingo] engines: multi {:?}", kinds);
+        let panel = app.get_webview_window(PANEL);
+        if let Some(p) = &panel {
+            let _ = p.emit(
+                "panel-start",
+                serde_json::json!({
+                    "original": text,
+                    "outputTarget": target,
+                    "compare": true,
+                    "engines": kinds,
+                }),
+            );
+        }
+        show_panel_bottom_right(app);
+        let mut tasks = Vec::new();
+        for kind in engines_on {
+            let app2 = app.clone();
+            let cfg2 = cfg.clone();
+            let text2 = text.clone();
+            let target2 = target.clone();
+            tasks.push(tauri::async_runtime::spawn(async move {
+                let mut stream = make_stream(kind, &cfg2, text2, target2, direction);
+                use futures_util::StreamExt;
+                let mut full = String::new();
+                while let Some(item) = stream.next().await {
+                    match item {
+                        Ok(chunk) => {
+                            full.push_str(&chunk);
+                            if let Some(w) = app2.get_webview_window(PANEL) {
+                                let _ = w.emit(
+                                    "panel-chunk",
+                                    serde_json::json!({ "engine": kind.id(), "text": chunk }),
+                                );
+                            }
+                        }
+                        Err(e) => return (kind, Err(e)),
+                    }
+                }
+                (kind, if full.trim().is_empty() { Err("空结果".into()) } else { Ok(full) })
+            }));
+        }
+        let mut errs = vec![];
+        let mut any_ok = false;
+        let mut primary: Option<String> = None;
+        for t in tasks {
+            let (kind, r) = t.await.unwrap_or((kind_of_id("llm").unwrap(), Err("任务崩溃".into())));
+            match r {
+                Ok(translated) => {
+                    any_ok = true;
+                    if primary.is_none() {
+                        primary = Some(translated.clone());
+                    }
+                    state(app).history.add(
+                        app,
+                        if direction == Direction::Input { "input" } else { "output" },
+                        &text,
+                        &translated,
+                        kind.id(),
+                    );
+                }
+                Err(e) => errs.push(format!("{}: {e}", kind.label())),
+            }
+        }
+        if let Some(p) = &panel {
+            let _ = p.emit(
+                "panel-done",
+                serde_json::json!({
+                    "ok": any_ok,
+                    "error": if errs.is_empty() { serde_json::Value::Null } else { serde_json::json!(errs.join("；")) },
+                }),
+            );
+        }
+        match primary {
+            Some(p) => Ok(p),
+            None => Err(errs.join("；")),
+        }
     };
-    let mut used_engine = "llm";
 
-    // 降级链：LLM 失败且 DeepL 已配置 → 自动兜底
-    if result.is_err() && deepl_ready {
-        let err = result.clone().unwrap_err();
-        eprintln!("[chatlingo] LLM failed ({err}), falling back to DeepL");
-        if let Some(win) = app.get_webview_window(window) {
-            let _ = win.emit(
-                "engine-note",
-                serde_json::json!({ "note": format!("大模型失败，已用 DeepL 兜底（{err}）") }),
-            );
-        }
-        let engine = engines::deepl::DeeplEngine::new(cfg.deepl.api_key.clone());
-        use futures_util::StreamExt;
-        let mut stream = engine.translate_stream(TranslateParams {
-            text: text.clone(),
-            target_lang: target.clone(),
-            direction,
-        });
-        let win = app.get_webview_window(window);
-        let mut full = String::new();
-        while let Some(item) = stream.next().await {
-            match item {
-                Ok(chunk) => {
-                    full.push_str(&chunk);
-                    if let Some(w) = &win {
-                        if window == QUICKBAR {
-                            let id = ACTIVE_REQ.load(std::sync::atomic::Ordering::SeqCst);
-                            let _ = w.emit(
-                                "quickbar-chunk",
-                                serde_json::json!({ "id": id, "text": chunk }),
-                            );
-                        } else {
-                            let _ = w.emit("panel-chunk", serde_json::json!({ "text": chunk }));
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("[chatlingo] deepl translate error: {e}");
-                    result = Err(format!("LLM: {err}；DeepL: {e}"));
-                    break;
-                }
-            }
-        }
-        if result.is_err() && !full.trim().is_empty() {
-            eprintln!(
-                "[chatlingo] translate ok via DeepL: {} chars",
-                full.chars().count()
-            );
-            result = Ok(full);
-            used_engine = "deepl";
-        }
-    }
-
-    // 降级链 2：仍失败且腾讯云已配置 → 最终兜底（国内直连，永远可达）
-    let tencent_ready = !cfg.tencent.secret_id.is_empty() && !cfg.tencent.secret_key.is_empty();
-    if result.is_err() && tencent_ready {
-        let prev_err = result.clone().unwrap_err();
-        eprintln!("[chatlingo] DeepL failed, falling back to Tencent");
-        if let Some(win) = app.get_webview_window(window) {
-            let _ = win.emit(
-                "engine-note",
-                serde_json::json!({ "note": "DeepL 失败，已用腾讯云兜底" }),
-            );
-        }
-        let engine = engines::tencent::TencentEngine::new(
-            cfg.tencent.secret_id.clone(),
-            cfg.tencent.secret_key.clone(),
-        );
-        use futures_util::StreamExt;
-        let mut stream = engine.translate_stream(TranslateParams {
-            text: text.clone(),
-            target_lang: target.clone(),
-            direction,
-        });
-        let win = app.get_webview_window(window);
-        let mut full = String::new();
-        while let Some(item) = stream.next().await {
-            match item {
-                Ok(chunk) => {
-                    full.push_str(&chunk);
-                    if let Some(w) = &win {
-                        if window == QUICKBAR {
-                            let id = ACTIVE_REQ.load(std::sync::atomic::Ordering::SeqCst);
-                            let _ = w.emit(
-                                "quickbar-chunk",
-                                serde_json::json!({ "id": id, "text": chunk }),
-                            );
-                        } else {
-                            let _ = w.emit("panel-chunk", serde_json::json!({ "text": chunk }));
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("[chatlingo] tencent translate error: {e}");
-                    result = Err(format!("{prev_err}；腾讯云: {e}"));
-                    break;
-                }
-            }
-        }
-        if result.is_err() && !full.trim().is_empty() {
-            eprintln!(
-                "[chatlingo] translate ok via Tencent: {} chars",
-                full.chars().count()
-            );
-            result = Ok(full);
-            used_engine = "tencent";
-        }
-    }
-    // 成功 → 写入缓存与历史；无论如何清掉 in-flight 标记
-    if let Ok(translated) = &result {
-        state(app).cache.lock().unwrap().put(cache_key, translated.clone());
-        let dir_label = match direction {
-            Direction::Input => "input",
-            Direction::Output => "output",
-        };
-        state(app).history.add(app, dir_label, &text, translated, used_engine);
+    let _ = primary_engine_unused();
+    if result.is_ok() {
+        state(app).cache.lock().unwrap().put(cache_key, result.as_ref().unwrap().clone());
     }
     state(app).in_flight.lock().unwrap().remove(&cache_key);
     result
 }
 
-async fn run_engine_stream(
-    app: &AppHandle,
-    window: &str,
-    text: String,
-    target: String,
-    direction: Direction,
-    cfg: &AppConfig,
-) -> Result<String, String> {
-    let engine = OpenAiCompatEngine::new(cfg.engine.base_url.clone(), cfg.engine.api_key.clone(), cfg.engine.model.clone());
-    let mut stream = engine.translate_stream(TranslateParams {
-        text,
-        target_lang: target,
-        direction,
-    });
-    let win = app.get_webview_window(window).ok_or("窗口不存在")?.clone();
-
-    use futures_util::StreamExt;
-    let mut full = String::new();
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(chunk) => {
-                full.push_str(&chunk);
-                if window == QUICKBAR {
-                    let id = ACTIVE_REQ.load(std::sync::atomic::Ordering::SeqCst);
-                    let _ = win.emit(
-                        "quickbar-chunk",
-                        serde_json::json!({ "id": id, "text": chunk }),
-                    );
-                } else {
-                    let _ = win.emit("panel-chunk", serde_json::json!({ "text": chunk }));
-                }
-            }
-            Err(e) => {
-                eprintln!("[chatlingo] translate error: {e}");
-                return Err(e);
-            }
-        }
+fn primary_engine_unused() {}
+fn kind_of_id(id: &str) -> Option<EngineKind> {
+    match id {
+        "llm" => Some(EngineKind::Llm),
+        "deepl" => Some(EngineKind::Deepl),
+        _ => Some(EngineKind::Aliyun),
     }
-    if full.trim().is_empty() {
-        return Err("引擎返回了空结果".into());
-    }
-    eprintln!(
-        "[chatlingo] translate ok: {} chars, direction={:?}",
-        full.chars().count(),
-        direction
-    );
-    Ok(full)
 }
 
 static ACTIVE_REQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -510,8 +579,10 @@ async fn list_models(app: AppHandle) -> Result<Value, String> {
 #[tauri::command]
 async fn test_engine(app: AppHandle) -> Result<Value, String> {
     let cfg = state(&app).config.lock().unwrap().clone();
-    // LLM 主引擎
-    let llm = if cfg.engine.api_key.is_empty() {
+    // 未启用的引擎直接标「未启用」，不算失败
+    let llm = if !cfg.engine.enabled {
+        (false, "未启用".to_string())
+    } else if cfg.engine.api_key.is_empty() {
         (false, "未填写 Key".to_string())
     } else {
         let engine = OpenAiCompatEngine::new(cfg.engine.base_url.clone(), cfg.engine.api_key.clone(), cfg.engine.model.clone());
@@ -520,8 +591,9 @@ async fn test_engine(app: AppHandle) -> Result<Value, String> {
             Err(e) => (false, e),
         }
     };
-    // DeepL 兜底
-    let deepl = if cfg.deepl.api_key.is_empty() {
+    let deepl = if !cfg.deepl.enabled {
+        (false, "未启用".to_string())
+    } else if cfg.deepl.api_key.is_empty() {
         (false, "未填写 Key".to_string())
     } else {
         let engine = engines::deepl::DeeplEngine::new(cfg.deepl.api_key.clone());
@@ -530,13 +602,14 @@ async fn test_engine(app: AppHandle) -> Result<Value, String> {
             Err(e) => (false, e),
         }
     };
-    // 腾讯云最终兜底
-    let tencent = if cfg.tencent.secret_id.is_empty() || cfg.tencent.secret_key.is_empty() {
+    let tencent = if !cfg.aliyun.enabled {
+        (false, "未启用".to_string())
+    } else if cfg.aliyun.access_key_id.is_empty() || cfg.aliyun.access_key_secret.is_empty() {
         (false, "未填写密钥".to_string())
     } else {
-        let engine = engines::tencent::TencentEngine::new(
-            cfg.tencent.secret_id.clone(),
-            cfg.tencent.secret_key.clone(),
+        let engine = engines::aliyun::AliyunEngine::new(
+            cfg.aliyun.access_key_id.clone(),
+            cfg.aliyun.access_key_secret.clone(),
         );
         match engine.quick_check().await {
             Ok(()) => (true, String::new()),
@@ -544,22 +617,14 @@ async fn test_engine(app: AppHandle) -> Result<Value, String> {
         }
     };
     let ok = llm.0 || deepl.0 || tencent.0;
-    let mut parts = vec![];
-    if !llm.0 {
-        parts.push(format!("大模型: {}", llm.1));
-    } else {
-        parts.push("大模型: ✓".into());
-    }
-    if !deepl.0 {
-        parts.push(format!("DeepL: {}", deepl.1));
-    } else {
-        parts.push("DeepL: ✓".into());
-    }
-    if !tencent.0 {
-        parts.push(format!("腾讯云: {}", tencent.1));
-    } else {
-        parts.push("腾讯云: ✓".into());
-    }
+    let fmt = |name: &str, r: (bool, String)| -> String {
+        if r.0 {
+            format!("{name}: ✓")
+        } else {
+            format!("{name}: {}", r.1)
+        }
+    };
+    let parts = vec![fmt("大模型", llm), fmt("DeepL", deepl), fmt("腾讯云", tencent)];
     Ok(serde_json::json!({ "ok": ok, "error": parts.join("；") }))
 }
 
@@ -895,134 +960,8 @@ pub async fn translate_output(app: AppHandle, text: String, cfg: AppConfig) {
         eprintln!("[chatlingo] skip: code dominant");
         return;
     }
-    let panel = app.get_webview_window(PANEL);
-    // 对比模式：LLM 与 DeepL 并行翻译，面板并列展示
-    let compare = cfg.compare_mode && !cfg.engine.api_key.is_empty() && !cfg.deepl.api_key.is_empty();
-    if let Some(p) = &panel {
-        let _ = p.emit(
-            "panel-start",
-            serde_json::json!({ "original": trimmed, "outputTarget": cfg.output_target, "compare": compare }),
-        );
-    }
-    show_panel_bottom_right(&app);
-    if compare {
-        translate_compare(&app, trimmed, cfg.output_target.clone()).await;
-        return;
-    }
-    let result = run_translation(&app, PANEL, trimmed, cfg.output_target.clone(), Direction::Output).await;
-    if let Some(p) = &panel {
-        let _ = p.emit(
-            "panel-done",
-            match result {
-                Ok(_) => serde_json::json!({ "ok": true }),
-                Err(e) => serde_json::json!({ "ok": false, "error": e }),
-            },
-        );
-    }
-}
-
-/// 对比模式：LLM 与 DeepL 同时翻译，chunk 带 engine 标签推送
-async fn translate_compare(app: &AppHandle, text: String, target: String) {
-    use futures_util::StreamExt;
-    let cfg = state(app).config.lock().unwrap().clone();
-    eprintln!("[chatlingo] compare mode: LLM ∥ DeepL → {target}");
-
-    let llm_cfg = cfg.clone();
-    let llm_text = text.clone();
-    let llm_target = target.clone();
-    let llm_app = app.clone();
-    let llm_task = tauri::async_runtime::spawn(async move {
-        let engine = OpenAiCompatEngine::new(llm_cfg.engine.base_url, llm_cfg.engine.api_key, llm_cfg.engine.model);
-        let mut stream = engine.translate_stream(TranslateParams {
-            text: llm_text,
-            target_lang: llm_target,
-            direction: Direction::Output,
-        });
-        let mut full = String::new();
-        while let Some(item) = stream.next().await {
-            match item {
-                Ok(chunk) => {
-                    full.push_str(&chunk);
-                    if let Some(w) = llm_app.get_webview_window(PANEL) {
-                        let _ = w.emit("panel-chunk", serde_json::json!({ "engine": "llm", "text": chunk }));
-                    }
-                }
-                Err(e) => return Err(e),
-            }
-        }
-        if full.trim().is_empty() {
-            Err("引擎返回了空结果".into())
-        } else {
-            Ok(full)
-        }
-    });
-
-    let deepl_cfg = cfg.clone();
-    let deepl_text = text.clone();
-    let deepl_target = target.clone();
-    let deepl_app = app.clone();
-    let deepl_task = tauri::async_runtime::spawn(async move {
-        let engine = engines::deepl::DeeplEngine::new(deepl_cfg.deepl.api_key);
-        let mut stream = engine.translate_stream(TranslateParams {
-            text: deepl_text,
-            target_lang: deepl_target,
-            direction: Direction::Output,
-        });
-        let mut full = String::new();
-        while let Some(item) = stream.next().await {
-            match item {
-                Ok(chunk) => {
-                    full.push_str(&chunk);
-                    if let Some(w) = deepl_app.get_webview_window(PANEL) {
-                        let _ = w.emit("panel-chunk", serde_json::json!({ "engine": "deepl", "text": chunk }));
-                    }
-                }
-                Err(e) => return Err(e),
-            }
-        }
-        if full.trim().is_empty() {
-            Err("引擎返回了空结果".into())
-        } else {
-            Ok(full)
-        }
-    });
-
-    let (llm_res, deepl_res) = tokio::join!(llm_task, deepl_task);
-    eprintln!(
-        "[chatlingo] compare done: llm={} deepl={}",
-        matches!(&llm_res, Ok(Ok(_))),
-        matches!(&deepl_res, Ok(Ok(_)))
-    );
-    // 对比模式记录大模型译文到历史
-    if let Ok(Ok(translated)) = &llm_res {
-        state(app).history.add(app, "output", &text, translated, "llm-compare");
-    }
-    let llm_err = match llm_res {
-        Ok(Ok(_)) => None,
-        Ok(Err(e)) => Some(e),
-        Err(e) => Some(e.to_string()),
-    };
-    let deepl_err = match deepl_res {
-        Ok(Ok(_)) => None,
-        Ok(Err(e)) => Some(e),
-        Err(e) => Some(e.to_string()),
-    };
-    if let Some(p) = app.get_webview_window(PANEL) {
-        let mut errs = vec![];
-        if let Some(e) = llm_err {
-            errs.push(format!("LLM: {e}"));
-        }
-        if let Some(e) = deepl_err {
-            errs.push(format!("DeepL: {e}"));
-        }
-        let _ = p.emit(
-            "panel-done",
-            serde_json::json!({
-                "ok": errs.len() < 2,
-                "error": if errs.is_empty() { serde_json::Value::Null } else { serde_json::json!(errs.join("；")) },
-            }),
-        );
-    }
+    // panel-start / compare / panel-done 均由 run_translation 统一负责
+    let _ = run_translation(&app, PANEL, trimmed, cfg.output_target.clone(), Direction::Output).await;
 }
 
 // ---------- 剪贴板与粘贴 ----------

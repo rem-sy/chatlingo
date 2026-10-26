@@ -5,6 +5,11 @@
     <section>
       <h2>翻译引擎（OpenAI 兼容）</h2>
       <div class="form-row">
+        <label>启用</label>
+        <input type="checkbox" v-model="cfg.engine.enabled" />
+        <span class="hint">关闭后不参与翻译；开启多个引擎时将同时翻译并在面板对比</span>
+      </div>
+      <div class="form-row">
         <label>Base URL</label>
         <input v-model="cfg.engine.baseUrl" type="text" placeholder="https://api.deepseek.com/v1" />
       </div>
@@ -34,35 +39,40 @@
     </section>
 
     <section>
-      <h2>兜底引擎（DeepL，可选）</h2>
+      <h2>DeepL</h2>
+      <div class="form-row">
+        <label>启用</label>
+        <input type="checkbox" v-model="cfg.deepl.enabled" />
+        <span class="hint">每月免费 50 万字符，Key 以 :fx 结尾（[获取](https://www.deepl.com/pro#developer)）；国内需代理</span>
+      </div>
       <div class="form-row">
         <label>DeepL API Key</label>
-        <input v-model="cfg.deepl.apiKey" type="password" placeholder="留空则不启用兜底；免费版 Key 以 :fx 结尾" />
-      </div>
-      <div class="form-row">
-        <label></label>
-        <span class="hint">大模型请求失败时自动用 DeepL 翻译；每月免费 50 万字符</span>
-      </div>
-      <div class="form-row">
-        <label>双引擎对比</label>
-        <input type="checkbox" v-model="cfg.compareMode" />
-        <span class="hint">输出方向同时用大模型和 DeepL 翻译，面板并列展示择优</span>
+        <input v-model="cfg.deepl.apiKey" type="password" placeholder="留空则不启用" />
       </div>
     </section>
 
     <section>
-      <h2>最终兜底（腾讯云机器翻译，可选）</h2>
+      <h2>阿里云机器翻译</h2>
+      <div class="form-row">
+        <label>启用</label>
+        <input type="checkbox" v-model="cfg.tencent.enabled" />
+        <span class="hint">国内直连；个人每月 500 万字符免费</span>
+      </div>
       <div class="form-row">
         <label>SecretId</label>
-        <input v-model="cfg.tencent.secretId" type="password" placeholder="访问管理 cam/capi 里创建" />
+        <input v-model="cfg.aliyun.accessKeyId" type="password" placeholder="访问管理 cam/capi 里创建" />
       </div>
       <div class="form-row">
         <label>SecretKey</label>
-        <input v-model="cfg.tencent.secretKey" type="password" placeholder="40 位密钥" />
+        <input v-model="cfg.aliyun.accessKeySecret" type="password" placeholder="访问管理里创建的密钥" />
       </div>
+    </section>
+
+    <section>
+      <h2>多引擎</h2>
       <div class="form-row">
         <label></label>
-        <span class="hint">大模型和 DeepL 都失败时自动用腾讯云兜底（国内直连，个人每月 500 万字符免费）</span>
+        <span class="hint">启用多个引擎时：所有启用的引擎会同时翻译，阅读面板并列展示结果对比，择优复制</span>
       </div>
     </section>
 
@@ -212,9 +222,9 @@ const orderedLangs = computed(() =>
 
 function defaultCfg(): AppConfig {
   return {
-    engine: { baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat' },
-    deepl: { apiKey: '' },
-    tencent: { secretId: '', secretKey: '' },
+    engine: { enabled: true, baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat' },
+    deepl: { enabled: true, apiKey: '' },
+    aliyun: { enabled: true, accessKeyId: '', accessKeySecret: '' },
     compareMode: false,
     quickbar: { hotkey: 'alt+t', targetLangs: ['en', 'ja'], defaultTarget: 'en', autoCopy: true, autoPaste: true },
     clipboard: { monitor: true, minLength: 20, visionModel: '' },
@@ -229,8 +239,8 @@ onMounted(async () => {
   })
   try {
     const c = await invoke<AppConfig>('get_config')
-    if (!c.deepl) c.deepl = { apiKey: '' }
-    if (!c.tencent) c.tencent = { secretId: '', secretKey: '' }
+    if (!c.deepl) c.deepl = { enabled: true, apiKey: '' }
+    if (!c.aliyun) c.aliyun = { enabled: true, accessKeyId: '', accessKeySecret: '' }
     cfg.value = c
     selectedLangs.value = [...c.quickbar.targetLangs]
     if (!selectedLangs.value.length) selectedLangs.value = ['en']

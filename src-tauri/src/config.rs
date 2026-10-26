@@ -6,6 +6,9 @@ use tauri::{AppHandle, Manager};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EngineConfig {
+    /// 是否启用（关闭后不参与翻译与降级链）
+    #[serde(default = "yes")]
+    pub enabled: bool,
     /// 兼容历史配置里的 "baseURL" 写法
     #[serde(default = "default_base_url", alias = "baseURL")]
     pub base_url: String,
@@ -24,7 +27,7 @@ fn default_model() -> String {
 
 impl Default for EngineConfig {
     fn default() -> Self {
-        EngineConfig { base_url: default_base_url(), api_key: String::new(), model: default_model() }
+        EngineConfig { enabled: true, base_url: default_base_url(), api_key: String::new(), model: default_model() }
     }
 }
 
@@ -97,28 +100,32 @@ impl Default for ClipboardConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeeplConfig {
+    #[serde(default = "yes")]
+    pub enabled: bool,
     #[serde(default)]
     pub api_key: String,
 }
 
 impl Default for DeeplConfig {
     fn default() -> Self {
-        DeeplConfig { api_key: String::new() }
+        DeeplConfig { enabled: true, api_key: String::new() }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TencentConfig {
+pub struct AliyunConfig {
+    #[serde(default = "yes")]
+    pub enabled: bool,
     #[serde(default)]
-    pub secret_id: String,
+    pub access_key_id: String,
     #[serde(default)]
-    pub secret_key: String,
+    pub access_key_secret: String,
 }
 
-impl Default for TencentConfig {
+impl Default for AliyunConfig {
     fn default() -> Self {
-        TencentConfig { secret_id: String::new(), secret_key: String::new() }
+        AliyunConfig { enabled: true, access_key_id: String::new(), access_key_secret: String::new() }
     }
 }
 
@@ -130,7 +137,7 @@ pub struct AppConfig {
     #[serde(default)]
     pub deepl: DeeplConfig,
     #[serde(default)]
-    pub tencent: TencentConfig,
+    pub aliyun: AliyunConfig,
     /// 输出方向：大模型与 DeepL 同时翻译、面板并列对比
     #[serde(default)]
     pub compare_mode: bool,
@@ -150,12 +157,13 @@ impl Default for AppConfig {
     fn default() -> Self {
         AppConfig {
             engine: EngineConfig {
+                enabled: true,
                 base_url: default_base_url(),
                 api_key: String::new(),
                 model: default_model(),
             },
             deepl: DeeplConfig::default(),
-            tencent: TencentConfig::default(),
+            aliyun: AliyunConfig::default(),
             compare_mode: false,
             quickbar: QuickbarConfig {
                 hotkey: default_hotkey(),

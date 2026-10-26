@@ -9,19 +9,28 @@ export interface EngineConfig {
   model: string
 }
 
+export interface EngineConfig {
+  enabled: boolean
+  baseUrl: string
+  apiKey: string
+  model: string
+}
+
 export interface DeeplConfig {
+  enabled: boolean
   apiKey: string
 }
 
-export interface TencentConfig {
-  secretId: string
-  secretKey: string
+export interface AliyunConfig {
+  enabled: boolean
+  accessKeyId: string
+  accessKeySecret: string
 }
 
 export interface AppConfig {
   engine: EngineConfig
   deepl: DeeplConfig
-  tencent: TencentConfig
+  aliyun: AliyunConfig
   compareMode: boolean
   quickbar: {
     hotkey: string

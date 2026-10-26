@@ -15,19 +15,12 @@
         <div class="original-text">{{ original }}</div>
       </details>
       <template v-if="compare">
-        <div class="compare-col">
+        <div v-for="eng in engines" :key="eng" class="compare-col">
           <div class="compare-head">
-            <span class="compare-tag llm">大模型</span>
-            <button class="mini" title="复制大模型译文" @click="copy(llmText)">复制</button>
+            <span class="compare-tag">{{ engLabel(eng) }}</span>
+            <button class="mini" :title="'复制' + engLabel(eng) + '译文'" @click="copy(compareTexts[eng] || '')">复制</button>
           </div>
-          <div class="translation markdown-body" v-html="renderMd(llmText)"></div>
-        </div>
-        <div class="compare-col">
-          <div class="compare-head">
-            <span class="compare-tag deepl">DeepL</span>
-            <button class="mini" title="复制 DeepL 译文" @click="copy(deeplText)">复制</button>
-          </div>
-          <div class="translation plain">{{ deeplText }}</div>
+          <div class="translation markdown-body" v-html="renderMd(compareTexts[eng] || '')"></div>
         </div>
       </template>
       <div v-else class="translation markdown-body" v-html="rendered"></div>
@@ -46,17 +39,30 @@ import './panel.css'
 
 const original = ref('')
 const translation = ref('')
-const llmText = ref('')
-const deeplText = ref('')
 const compare = ref(false)
+const engines = ref<string[]>([])
+const compareTexts = ref<Record<string, string>>({})
 const streaming = ref(false)
 const error = ref('')
 const note = ref('')
 const outputTarget = ref('zh-CN')
 
+const ENGINE_NAMES: Record<string, string> = {
+  llm: '大模型',
+  deepl: 'DeepL',
+  tencent: '腾讯云',
+}
+const engLabel = (id: string) => ENGINE_NAMES[id] ?? id
+
 const outputLabel = computed(() => langLabel(outputTarget.value))
 const statusText = computed(() =>
-  error.value ? '失败' : streaming.value ? '翻译中…' : (compare.value ? llmText.value : translation.value) ? '完成' : '等待'
+  error.value
+    ? '失败'
+    : streaming.value
+      ? '翻译中…'
+      : (compare.value ? Object.values(compareTexts.value).some((t) => t) : translation.value)
+        ? '完成'
+        : '等待'
 )
 
 function renderMd(text: string): string {
@@ -71,13 +77,13 @@ onMountedHook()
 
 async function onMountedHook() {
   await invoke('panel_ready', {})
-  await listen<{ original: string; outputTarget: string; compare?: boolean }>('panel-start', (e) => {
+  await listen<{ original: string; outputTarget: string; compare?: boolean; engines?: string[] }>('panel-start', (e) => {
     original.value = e.payload.original
     outputTarget.value = e.payload.outputTarget
     compare.value = !!e.payload.compare
+    engines.value = e.payload.engines ?? []
+    compareTexts.value = {}
     translation.value = ''
-    llmText.value = ''
-    deeplText.value = ''
     error.value = ''
     note.value = ''
     streaming.value = true
@@ -86,10 +92,8 @@ async function onMountedHook() {
     note.value = e.payload.note
   })
   await listen<{ text: string; engine?: string }>('panel-chunk', (e) => {
-    if (e.payload.engine === 'llm') {
-      llmText.value += e.payload.text
-    } else if (e.payload.engine === 'deepl') {
-      deeplText.value += e.payload.text
+    if (e.payload.engine) {
+      compareTexts.value[e.payload.engine] = (compareTexts.value[e.payload.engine] || '') + e.payload.text
     } else {
       translation.value += e.payload.text
     }
