@@ -55,7 +55,7 @@
       <h2>阿里云机器翻译</h2>
       <div class="form-row">
         <label>启用</label>
-        <input type="checkbox" v-model="cfg.tencent.enabled" />
+        <input type="checkbox" v-model="cfg.aliyun.enabled" />
         <span class="hint">国内直连；个人每月 500 万字符免费</span>
       </div>
       <div class="form-row">
@@ -225,7 +225,6 @@ function defaultCfg(): AppConfig {
     engine: { enabled: true, baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat' },
     deepl: { enabled: true, apiKey: '' },
     aliyun: { enabled: true, accessKeyId: '', accessKeySecret: '' },
-    compareMode: false,
     quickbar: { hotkey: 'alt+t', targetLangs: ['en', 'ja'], defaultTarget: 'en', autoCopy: true, autoPaste: true },
     clipboard: { monitor: true, minLength: 20, visionModel: '' },
     outputTarget: 'zh-CN',

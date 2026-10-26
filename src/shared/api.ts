@@ -31,7 +31,6 @@ export interface AppConfig {
   engine: EngineConfig
   deepl: DeeplConfig
   aliyun: AliyunConfig
-  compareMode: boolean
   quickbar: {
     hotkey: string
     targetLangs: string[]
