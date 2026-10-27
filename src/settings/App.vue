@@ -81,27 +81,27 @@
       <div class="form-row">
         <label>可用语言</label>
         <div class="lang-grid">
-          <label v-for="l in LANG_CATALOG" :key="l.code" class="lang-check">
+          <label v-for="code in unionLangs" :key="code" class="lang-check">
             <input
               type="checkbox"
-              :value="l.code"
+              :value="code"
               v-model="selectedLangs"
             />
-            {{ l.label }} {{ l.name }}
+            {{ langDef(code).label }} {{ langDef(code).name }}
           </label>
         </div>
       </div>
       <div class="form-row">
         <label>默认目标</label>
         <select v-model="cfg.quickbar.defaultTarget">
-          <option v-for="c in selectedLangs" :key="c" :value="c">{{ langDef(c).label }} {{ langDef(c).name }}</option>
+          <option v-for="c in unionSelected" :key="c" :value="c">{{ langDef(c).label }} {{ langDef(c).name }}</option>
         </select>
         <span class="hint">Alt+T 面板初始选中的目标语言</span>
       </div>
       <div class="form-row">
         <label>输出方向目标</label>
         <select v-model="cfg.outputTarget">
-          <option v-for="l in LANG_CATALOG" :key="l.code" :value="l.code">{{ l.label }} {{ l.name }}</option>
+          <option v-for="code in unionLangs" :key="code" :value="code">{{ langDef(code).label }} {{ langDef(code).name }}</option>
         </select>
         <span class="hint">剪贴板监听/输出方向的翻译目标</span>
       </div>
@@ -179,7 +179,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { invoke, type AppConfig, LANG_CATALOG, langDef } from '../shared/api'
+import { invoke, type AppConfig, LANG_CATALOG, langDef, SUPPORTED_LANGS } from '../shared/api'
 import '../shared/base.css'
 import './settings.css'
 
@@ -199,7 +199,7 @@ const modelMsg = ref('')
 async function fetchModels() {
   loadingModels.value = true
   modelMsg.value = ''
-  cfg.value.quickbar.targetLangs = orderedLangs.value
+  cfg.value.quickbar.targetLangs = unionSelected.value
   try {
     await invoke('save_config', { config: cfg.value })
     const res = await invoke<{ models: string[] }>('list_models')
@@ -216,9 +216,21 @@ async function fetchModels() {
 }
 
 // 目录顺序展示勾选结果
+const unionSelected = computed(() =>
+  orderedLangs.value.filter((c) => unionLangs.value.includes(c))
+)
 const orderedLangs = computed(() =>
   LANG_CATALOG.map((l) => l.code).filter((c) => selectedLangs.value.includes(c))
 )
+
+// 启用渠道支持语言的并集：语言网格只展示这些
+const unionLangs = computed(() => {
+  const set = new Set<string>()
+  if (cfg.value.engine.enabled) SUPPORTED_LANGS.llm.forEach((c) => set.add(c))
+  if (cfg.value.deepl.enabled) SUPPORTED_LANGS.deepl.forEach((c) => set.add(c))
+  if (cfg.value.aliyun.enabled) SUPPORTED_LANGS.aliyun.forEach((c) => set.add(c))
+  return LANG_CATALOG.map((l) => l.code).filter((c) => set.has(c))
+})
 
 function defaultCfg(): AppConfig {
   return {
@@ -241,8 +253,12 @@ onMounted(async () => {
     if (!c.deepl) c.deepl = { enabled: true, apiKey: '' }
     if (!c.aliyun) c.aliyun = { enabled: true, accessKeyId: '', accessKeySecret: '' }
     cfg.value = c
-    selectedLangs.value = [...c.quickbar.targetLangs]
-    if (!selectedLangs.value.length) selectedLangs.value = ['en']
+    const union = new Set<string>()
+    if (c.engine?.enabled) SUPPORTED_LANGS.llm.forEach((x) => union.add(x))
+    if (c.deepl?.enabled) SUPPORTED_LANGS.deepl.forEach((x) => union.add(x))
+    if (c.aliyun?.enabled) SUPPORTED_LANGS.aliyun.forEach((x) => union.add(x))
+    selectedLangs.value = c.quickbar.targetLangs.filter((x) => union.has(x))
+    if (!selectedLangs.value.length) selectedLangs.value = [...union].slice(0, 1)
   } catch (e) {
     saveErr.value = String(e)
   }
@@ -391,9 +407,12 @@ async function save() {
     saveErr.value = '至少选择一种可用语言'
     return
   }
-  cfg.value.quickbar.targetLangs = orderedLangs.value
-  if (!selectedLangs.value.includes(cfg.value.quickbar.defaultTarget)) {
-    cfg.value.quickbar.defaultTarget = orderedLangs.value[0]
+  cfg.value.quickbar.targetLangs = unionSelected.value
+  if (!unionLangs.value.includes(cfg.value.quickbar.defaultTarget)) {
+    cfg.value.quickbar.defaultTarget = unionSelected.value[0] || 'en'
+  }
+  if (!unionLangs.value.includes(cfg.value.outputTarget)) {
+    cfg.value.outputTarget = unionLangs.value[0] || 'zh-CN'
   }
   try {
     await invoke('save_config', { config: cfg.value })
@@ -413,7 +432,7 @@ async function test() {
   testing.value = true
   testOk.value = null
   testMsg.value = ''
-  cfg.value.quickbar.targetLangs = orderedLangs.value
+  cfg.value.quickbar.targetLangs = unionSelected.value
   try {
     await invoke('save_config', { config: cfg.value })
     const res = await invoke<{ ok: boolean; error?: string }>('test_engine')

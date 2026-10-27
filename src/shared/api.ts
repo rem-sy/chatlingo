@@ -75,3 +75,11 @@ export const langDef = (code: string): LangDef =>
   LANG_CATALOG.find((l) => l.code === code) ?? { code, label: code.toUpperCase(), name: code }
 
 export const langLabel = (code: string): string => langDef(code).label
+
+/** 各渠道支持的目标语言（与 Rust 端 supports_target 保持一致；llm 全量支持） */
+export const SUPPORTED_LANGS: Record<'llm' | 'deepl' | 'aliyun', string[]> = {
+  llm: LANG_CATALOG.map((l) => l.code),
+  deepl: ['en', 'ja', 'ko', 'zh-CN', 'fr', 'de', 'es', 'ru', 'pt', 'it', 'id'],
+  aliyun: ['en', 'ja', 'ko', 'zh-CN', 'fr', 'de', 'es', 'ru', 'pt', 'it', 'th', 'vi', 'ar'],
+}
+

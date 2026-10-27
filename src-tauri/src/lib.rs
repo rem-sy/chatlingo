@@ -275,6 +275,22 @@ fn enabled_engines(cfg: &AppConfig) -> Vec<EngineKind> {
     v
 }
 
+/// 各引擎支持的目标语言（与前端 SUPPORTED_LANGS 保持一致）
+fn supports_target(kind: EngineKind, target: &str) -> bool {
+    let t = target.to_ascii_lowercase();
+    match kind {
+        EngineKind::Llm => true,
+        EngineKind::Deepl => matches!(
+            t.as_str(),
+            "en" | "en-us" | "ja" | "ko" | "zh" | "zh-cn" | "zh-tw" | "fr" | "de" | "es" | "ru" | "pt" | "it" | "id"
+        ),
+        EngineKind::Aliyun => matches!(
+            t.as_str(),
+            "en" | "ja" | "ko" | "zh" | "zh-cn" | "zh-tw" | "fr" | "de" | "es" | "ru" | "pt" | "it" | "th" | "vi" | "ar"
+        ),
+    }
+}
+
 fn make_stream(
     kind: EngineKind,
     cfg: &AppConfig,
@@ -361,6 +377,13 @@ async fn run_translation(
     let engines_on = enabled_engines(&cfg);
     if engines_on.is_empty() {
         return Err("未启用任何翻译引擎，请先在设置中开启".into());
+    }
+    // 只保留支持当前目标语言的引擎；不支持的直接跳过，不去尝试
+    let engines_on: Vec<EngineKind> =
+        engines_on.into_iter().filter(|k| supports_target(*k, &target)).collect();
+    if engines_on.is_empty() {
+        let names: Vec<&str> = enabled_engines(&cfg).iter().map(|k| k.label()).collect();
+        return Err(format!("启用的引擎（{}）均不支持目标语言 {target}", names.join("、")));
     }
 
     // ---- 译文缓存 ----
