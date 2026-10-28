@@ -4,7 +4,7 @@
 
 > 为了纯英文使用 ChatGPT 而生。
 
-[![Status](https://img.shields.io/badge/status-v0.3.2%20usable-green)](docs/03-开发计划.md) ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey) ![Stack](https://img.shields.io/badge/stack-Tauri%202%20%7C%20Rust%20%7C%20Vue%203-orange) ![License](https://img.shields.io/badge/license-MIT-blue)
+[![Status](https://img.shields.io/badge/status-v0.4.0%20usable-green)](docs/03-开发计划.md) ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey) ![Stack](https://img.shields.io/badge/stack-Tauri%202%20%7C%20Rust%20%7C%20Vue%203-orange) ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## 这是什么
 
@@ -15,6 +15,19 @@
 
 从「想到一句话」到「这句话以英文出现在 ChatGPT 输入框」，全程不超过 2 次按键。纯英文对话的质量收益，零表达成本拿到。
 
+## 界面一览
+
+**Alt+T 统一面板**（多引擎并行 + 术语强制 + 译后校验提示）：
+
+![Alt+T 统一翻译面板](docs/screenshots/quickbar.png)
+
+> 同一句子双引擎并行：大模型严格按术语表译出「智能体 / 检索增强生成」；阿里云保留 RAG 原样时，
+> 卡片下方自动出现橙色「术语未生效」提示行（不强行改写，交给人类判断）。
+
+**术语库管理**（托盘「术语库…」打开）：
+
+![术语库管理窗口](docs/screenshots/glossary.png)
+
 ## 核心特性
 
 | 特性 | 说明 |
@@ -22,6 +35,7 @@
 | **统一入口** | `Alt+T` 一个面板搞定一切：选目标语言、文本输入、截图识别，面板内任意位置回车触发 |
 | **三引擎自由组合** | 大模型（任意 OpenAI 兼容 API）/ DeepL / 阿里云机器翻译，各自独立开关，开谁用谁 |
 | **多引擎并行对比** | 开启多个引擎时同时翻译，结果并列展示（Alt+T 面板堆叠卡片、阅读面板多栏），各带独立复制按钮 |
+| **术语库** | 维护「原文 → 固定译法」术语表，翻译时自动注入所有引擎：大模型 Prompt 强制注入、DeepL 官方 Glossary API、阿里云 Context 上下文；传统引擎译文未按术语翻译时追加橙色提示行（不强行替换）。搜索/启停/冲突标黄/JSON·CSV 导入导出，增删即生效 |
 | **语种智能联动** | 设置页语言列表 = 启用渠道支持语言的并集，随开关实时变化；运行时自动跳过不支持当前目标语言的引擎 |
 | **截图翻译** | 框选屏幕任意区域（图片、视频、不可复制界面均可），视觉模型识别文字回填输入框，校对后再翻译 |
 | **格式保真** | 大模型翻译保留 Markdown 结构，代码块、行内代码、URL 原样跳过不译 |
@@ -36,11 +50,11 @@
 
 从 [Releases](https://github.com/rem-sy/chatlingo/releases) 下载最新版：
 
-1. `ChatLingo_0.3.x_x64-setup.exe` 双击安装（装到用户目录，无需管理员权限），开始菜单启动
+1. `ChatLingo_0.4.x_x64-setup.exe` 双击安装（装到用户目录，无需管理员权限），开始菜单启动
 2. 托盘图标右键 → **设置**，启用并配置至少一个引擎（见下文），点「测试连接」
 3. <kbd>Alt</kbd>+<kbd>T</kbd> 开始使用
 
-> 便携版：`chatlingo-0.3.x-portable.exe` 可直接运行，但**必须放在纯英文路径**（见 [已知问题](#已知问题)）。在 exe 同目录创建名为 `chatlingo.portable` 的空文件即进入便携模式，数据存于 exe 旁 `data/` 子目录。
+> 绿色版：Release 里的 `chatlingo.exe` 可直接运行，但**必须放在纯英文路径**（见 [已知问题](#已知问题)）。在 exe 同目录创建名为 `chatlingo.portable` 的空文件即进入便携模式，数据存于 exe 旁 `data/` 子目录。
 >
 > 数据位置（配置/翻译历史）默认在 `%APPDATA%\com.remsy.chatlingo\`，设置页「数据目录」可自定义任意位置并一键迁移。
 
@@ -58,6 +72,16 @@
 - <kbd>Esc</kbd> 收起，<kbd>Shift</kbd>+<kbd>Enter</kbd> 换行
 
 另外一条零按键通道：**剪贴板自动监听**（设置页可开关）——复制任意外文文本（≥最小长度、非代码主导），右下角自动弹出对照面板。多引擎时该面板以多栏并列展示各引擎结果，「原文」可折叠对照。
+
+### 术语库：让专有名词永远翻译一致
+
+托盘「术语库…」或设置页入口打开管理窗口。添加如 `RAG → 检索增强生成`、`Agent → 智能体`，翻译时自动生效：
+
+- **大模型**：命中的术语以「必须严格遵守」的术语表注入 system prompt
+- **DeepL**：自动创建官方 Glossary 资源并在翻译时引用（语言对受限，不支持时自动降级）
+- **阿里云**：术语拼接为 Context 上下文（软约束）
+- **译后校验兜底**：传统引擎译文未按术语翻译时，结果卡片追加橙色「术语未生效」提示行，不强行替换避免破坏语法
+- 同原文多条不同译法自动标黄；JSON / CSV 导入导出；增删改即时生效，无需重启
 
 ### 引擎配置
 
@@ -88,7 +112,7 @@
 
 ### 托盘菜单
 
-呼出翻译面板 · 翻译历史 · 设置 · 退出（退出请走托盘，避免托盘图标残留）
+呼出翻译面板 · 术语库 · 翻译历史 · 设置 · 退出（退出请走托盘，避免托盘图标残留）
 
 ## 已知问题
 
@@ -106,14 +130,16 @@ npm run tauri build  # 出安装包（C:\chatlingo-target\release\...）
 
 **技术栈**：Tauri 2（Rust 核心，业务全部在 Rust 侧）+ Vue 3 + TypeScript + Vite。
 
-**架构**：五窗口（`quickbar` / `panel` / `settings` / `history` / `snip`）+ 事件驱动。Rust 侧：`capture`（快捷键/剪贴板监听）→ `detect`（脚本统计语言检测）→ `engines`（`TranslationEngine` trait：OpenAI 兼容流式 / DeepL / 阿里云，含语种支持过滤）→ `actions`（写剪贴板/模拟粘贴）+ `store`（SQLite 历史）。前端零业务逻辑。
+**架构**：六窗口（`quickbar` / `panel` / `settings` / `history` / `glossary` / `snip`）+ 事件驱动。Rust 侧：`capture`（快捷键/剪贴板监听）→ `detect`（脚本统计语言检测）→ `engines`（`TranslationEngine` trait：OpenAI 兼容流式 / DeepL / 阿里云，含语种支持过滤与术语注入）→ `actions`（写剪贴板/模拟粘贴）+ `store`（SQLite 历史 + 术语库）。前端零业务逻辑。
 
 ```
 docs/
 ├── 00-开源参考调研.md   # pot/CopyTranslator/nextai-translator 等同类项目分析与差异化定位
 ├── 01-设计理念.md       # 方向感知、无感优先、格式保真、本地优先
 ├── 02-设计方案.md       # 交互形式、翻译流水线、技术架构、竞品对比
-└── 03-开发计划.md       # 里程碑与任务清单
+├── 03-开发计划.md       # 里程碑与任务清单
+├── design/              # 实现级设计（GLOSSARY_DESIGN 等）
+└── prompts/             # 各里程碑开工提示词
 ```
 
 ## Roadmap
@@ -123,7 +149,7 @@ docs/
 - [x] M3a 引擎生态·上（DeepL + 连接测试 + 译文缓存与请求合并）
 - [x] M3b 引擎生态·下（多引擎并行对比、截图翻译 OCR）
 - [x] M4 打磨·上（翻译历史 SQLite、开机自启、数据目录/便携模式、引擎开关式重构、语种联动、UI 重铸）
-- [ ] M5 术语库（详见[开发计划](docs/03-开发计划.md)）
+- [x] M5 术语库（Prompt 注入 + DeepL Glossary API + 阿里云 Context + 译后校验 + 管理窗口）
 - [ ] M6 打磨·下（自动更新、macOS/Linux 适配）
 - [ ] 远期：按应用记忆方向偏好、双语对话侧栏
 
