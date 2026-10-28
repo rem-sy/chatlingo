@@ -136,7 +136,10 @@ onMounted(async () => {
     }
   })
   await listen<{ engine?: string; text: string }>('glossary-warn', (e) => {
-    glossaryWarns.value[e.payload.engine || ''] = e.payload.text
+    // 多引擎模式挂到对应引擎卡片；单引擎模式（无卡片）归到 ''
+    const eng = e.payload.engine || ''
+    const key = multiOrder.value.includes(eng) ? eng : ''
+    glossaryWarns.value[key] = e.payload.text
   })
   await listen('quickbar-reset', () => {
     source.value = ''
