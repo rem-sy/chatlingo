@@ -42,9 +42,8 @@ npx vite build            # 只出 dist，快速验前端编译
 
 ## 当前进度
 
-> **最新会话：会话 2（2026-10-28，M5 术语库 → v0.4.0）**。
-> 项目处于 **v0.4.0 已发版**状态（tag + Release 双物料已上传，用户实机验收通过）。
-> 下一阶段 **M6 打磨**。
+> **最新会话：会话 3（2026-10-28 下午，v0.4.0 收尾 + M7 移动端调研规划）**。
+> 项目处于 **v0.4.0 已发版（含新图标/README 截图）** 状态；下一阶段 **M7 移动端（Android）**。
 > 会话记录按时间正序排列。
 
 ## 会话记录
@@ -136,11 +135,45 @@ npx vite build            # 只出 dist，快速验前端编译
   `docs/prompts/archive/`；产物归档 `D:\hobby\产物\chatlingo\v0.4.0\`
   （setup.exe + chatlingo.exe）；Release 已发布（v0.4.0 tag + 双物料 + notes）
 
+## 会话 3（2026-10-28 下午 · v0.4.0 收尾打磨 + M7 移动端调研规划）
+
+- **交付**：
+  - v0.4.0 后续打磨：README 全面更新至 v0.4.0（术语库特性/实机截图两张
+    `docs/screenshots/quickbar.png`+`glossary.png`/六窗口架构/M5 打勾）（6442619）
+  - 新图标三轮迭代：紫渐变 → 蓝渐变 → 定稿 **∞ 双环系列**（与密码本同款深蓝
+    RGB(28,69,123) + 白色单笔画，生成脚本 `C:\temp\chatlingo\make_icon_series.py`）
+  - quickbar 单引擎模式译后校验提示行不显示修复（409a2c7）；Release 双物料换新图标
+    构建（setup 3.4MB + exe 12.9MB）
+  - M7 移动端调研：Tauri 2 mobile 现状核实（2.10.x 稳定）、桌面特性×移动端可行性
+    矩阵、TLS/平台拆分方案；产出 `docs/design/MOBILE_DESIGN.md`（实现级设计 +
+    M7a/b/c 里程碑）+ `docs/prompts/M7_MOBILE_PROMPT.md`（开工提示词）
+  - 文档同步：ROADMAP 加 M7/M8 行 + 顺序裁决；03-开发计划 M7 节；HANDOFF 本节
+- **关键实现/坑**：
+  18. （前移自会话 2 补录）**换图标后构建不生效**：build script 只按 rerun-if-changed
+      重跑，仅改 icons/* 不嵌新图；必须 touch tauri.conf.json/build.rs；验证用 PE
+      RT_ICON 帧解析（pe_icons.py），ExtractAssociatedIcon 走缓存会撒谎
+  19. **GitHub 上传大资产用 curl 不用 urllib**：12.9MB exe urllib 三连 408，
+      curl 81 秒成功——后续 Release 大文件一律 curl
+  20. **截图自动化**：系统 IME 会吞 SendKeys（拼出中文），输入一律走剪贴板粘贴；
+      垫纯色背景会吃掉毛玻璃效果（用户指出）——用自家设置窗口当背景最体面；
+      always-on-top 的 quickbar 会挡其他窗口截图，先 Alt+T 收起
+  21. **本机 config 现状**（截图会话临时改动后已恢复）：llm/deepl 关、阿里云开
+      （Key 已写入 config.json，来源 ak.txt）；quickbar.defaultTarget=en；
+      glossary 字段尚未写入 config.json（旧版保存的配置，serde 默认值兜底，首次
+      设置页保存即落盘）；12 条演示术语在库（备注「内置示例术语」）
+- **验证**：新图标经 PE 帧解析确认嵌入（背景色精确匹配密码本）；用户实机确认
+  ∞ 图标；Release 资产 API 核对齐套；移动端调研经 tauri 官网/多方信源交叉确认
+- **收尾交接**：M7 开工提示词 `docs/prompts/M7_MOBILE_PROMPT.md`；
+  **开工第一件事是环境搭建验证（java/ANDROID_HOME/rustup targets）**，勿先动 lib.rs
+
 ## 下一步队列
 
-1. **M6 打磨**：自动更新（updater）、安装包签名、macOS/Linux 适配、性能目标、文档站
-2. Backlog：按应用记忆方向偏好、双语对话侧栏、CLI、插件化引擎、术语库进阶（多术语表/使用统计）
-3. 术语库候选优化：内置示例术语待用户清理后可考虑「首次启动预置默认术语库」选项
+1. **M7 移动端**（提示词 `docs/prompts/M7_MOBILE_PROMPT.md`，设计
+   `docs/design/MOBILE_DESIGN.md`）——环境搭建 → TLS 特性化 → 平台拆分 →
+   Android MVP 四页签 → 签名 APK（v0.5.0）
+2. **M6 打磨**（顺延）：自动更新（updater）、安装包签名、macOS/Linux 适配、性能目标、文档站
+3. Backlog：按应用记忆方向偏好、双语对话侧栏、CLI、插件化引擎、术语库进阶（多术语表/使用统计）、
+   移动端云同步（本地优先原则，仅在有强需求时考虑）、Play Store 上架
 
 ## 架构地图
 
