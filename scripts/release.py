@@ -59,26 +59,25 @@ def curl(args, output=None, input_str=None, check=True):
     if output:
         cmd += ["-o", str(output)]
     print(f"[release] $ {' '.join(str(c) for c in cmd)}")
-    r = subprocess.run(cmd, capture_output=True, text=True, **({"input": input_str} if input_str else {}))
+    r = subprocess.run(cmd, capture_output=True, **({"input": input_str} if input_str else {}))
+    if isinstance(r.stdout, bytes):
+        r.stdout = r.stdout.decode("utf-8", "replace")
+    if isinstance(r.stderr, bytes):
+        r.stderr = r.stderr.decode("utf-8", "replace")
     if check and r.returncode != 0:
         die(f"curl 失败: {r.stderr}")
     return r
 
 
 def github_token() -> str:
+    # 格式 https://rem-sy:<token>@github.com
     cred = Path.home() / ".git-credentials"
     if not cred.exists():
         die("~/.git-credentials 不存在，无法取 GitHub token")
-    for line in cred.read_text().splitlines():
-        m = re.search(r":(gh[ps]_[A-Za-z0-9_]+|x-access-token:[^@]+)@", line)
-        if m:
-            tok = m.group(1)
-            if tok.startswith("x-access-token:"):
-                tok = tok.split(":", 1)[1]
-            return tok
-    m = re.search(r"github\.com:([^:]+):([^@]+)@", cred.read_text())
+    t = cred.read_text().strip()
+    m = re.search(r"github\.com:[^:]+:([^@\s]+)@", t) or re.search(r":(gh[a-z]_[A-Za-z0-9_]+)@", t)
     if m:
-        return m.group(2)
+        return m.group(1)
     die("git-credentials 中未找到 GitHub token")
 
 
@@ -158,7 +157,7 @@ def create_release(version: str, notes: str, setup: Path, exe: Path, latest_json
         ["-H", f"Authorization: token {token}",
          "-H", "Content-Type: application/json; charset=utf-8",
          "-X", "POST", "-d", "@-", api],
-        input_str=body,
+        input_str=body.encode("utf-8"),
     )
     rel = json.loads(r.stdout)
     upload = rel.get("upload_url", "").split("{")[0]
