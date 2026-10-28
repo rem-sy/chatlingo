@@ -13,7 +13,7 @@ Tauri 2 + Rust + Vue 3，[github.com/rem-sy/chatlingo](https://github.com/rem-sy
 | 仓库路径 | `D:\hobby\源码\Translator`（路径含中文，见下方陷阱 1） |
 | 构建目录 | `C:\chatlingo-target`（`src-tauri/.cargo/config.toml` 固定，陷阱 1） |
 | 安装位置 | `C:\Users\Rem1sy\AppData\Local\ChatLingo\` |
-| 本机数据目录 | `D:\hobby\产物\chatlingo\v0.2.5\data\`（指针文件 `%APPDATA%\com.remsy.chatlingo\data-location`） |
+| 本机数据目录 | `D:\hobby\产物\chatlingo\v0.2.6\data\`（指针文件 `%APPDATA%\com.remsy.chatlingo\data-location`；会话 2 实测指针已从 v0.2.5 迁到 v0.2.6） |
 | 产物归档 | `D:\hobby\产物\chatlingo\<版本>\`（setup.exe + chatlingo.exe） |
 | 网络代理 | Clash 系统代理 `127.0.0.1:7890`，**时开时关**；git push / GitHub API / DeepL 依赖它；windhub 渠道与阿里云国内直连 |
 | git 凭据 | `~/.git-credentials` 明文存有 PAT（username rem-sy）；GitHub API 调用方式见下方命令节 |
