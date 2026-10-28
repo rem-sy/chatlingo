@@ -23,7 +23,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "RWSTTUjpAyJbm9/2vXBiZTdAMXmWqr1ALMHc+5s0h9fLd9daJbLbxnIU5",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY3RTY5NkM4NDAzQTUyOTMKUldTVFVqcEF5SmJtOS8ydlhCaVpUZEFNWG1XcXIxQUxNSGMrNXMwaDlmTGQ5ZGFKYkxieG5JVTUK",
       "endpoints": [
         "https://github.com/rem-sy/chatlingo/releases/latest/download/latest.json"
       ],
