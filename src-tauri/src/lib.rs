@@ -65,6 +65,18 @@ struct AppState {
     in_flight: Mutex<HashSet<u64>>,
     /// 翻译历史
     history: HistoryStore,
+    /// DeepL 远端术语表资源缓存（术语库变更时置脏，下次翻译懒重建）
+    deepl_glossary: Mutex<DeeplGlossaryCache>,
+}
+
+#[derive(Default)]
+struct DeeplGlossaryCache {
+    dirty: bool,
+    id: Option<String>,
+    /// 已建资源对应的 (source_lang, target_lang)
+    lang_pair: Option<(String, String)>,
+    /// 已建资源对应的术语内容签名
+    sig: u64,
 }
 
 const QUICKBAR: &str = "quickbar";
@@ -118,6 +130,16 @@ fn create_windows(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         WebviewWindowBuilder::new(app, "history", WebviewUrl::App("history.html".into()))
             .title("ChatLingo 翻译历史")
             .inner_size(560.0, 640.0)
+            .resizable(true)
+            .visible(false)
+            .shadow(true)
+            .build()
+    );
+    try_step!(
+        "glossary",
+        WebviewWindowBuilder::new(app, "glossary", WebviewUrl::App("glossary.html".into()))
+            .title("ChatLingo 术语库")
+            .inner_size(640.0, 620.0)
             .resizable(true)
             .visible(false)
             .shadow(true)
@@ -297,7 +319,18 @@ fn make_stream(
     text: String,
     target: String,
     direction: Direction,
+    glossary: Vec<(String, String)>,
+    deepl_glossary_id: Option<String>,
+    source_lang: Option<String>,
 ) -> ChunkStream {
+    let params = TranslateParams {
+        text,
+        target_lang: target,
+        direction,
+        glossary,
+        glossary_id: deepl_glossary_id,
+        source_lang,
+    };
     match kind {
         EngineKind::Llm => {
             let engine = OpenAiCompatEngine::new(
@@ -305,18 +338,18 @@ fn make_stream(
                 cfg.engine.api_key.clone(),
                 cfg.engine.model.clone(),
             );
-            engine.translate_stream(TranslateParams { text, target_lang: target, direction })
+            engine.translate_stream(params)
         }
         EngineKind::Deepl => {
             let engine = engines::deepl::DeeplEngine::new(cfg.deepl.api_key.clone());
-            engine.translate_stream(TranslateParams { text, target_lang: target, direction })
+            engine.translate_stream(params)
         }
         EngineKind::Aliyun => {
             let engine = engines::aliyun::AliyunEngine::new(
                 cfg.aliyun.access_key_id.clone(),
                 cfg.aliyun.access_key_secret.clone(),
             );
-            engine.translate_stream(TranslateParams { text, target_lang: target, direction })
+            engine.translate_stream(params)
         }
     }
 }
@@ -331,9 +364,14 @@ async fn run_single_stream(
     direction: Direction,
     cfg: &AppConfig,
     tag_chunks: bool,
+    glossary: Vec<(String, String)>,
+    deepl_glossary_id: Option<String>,
+    source_lang: Option<String>,
 ) -> Result<String, String> {
     let win = app.get_webview_window(window).ok_or("窗口不存在")?.clone();
-    let mut stream = make_stream(kind, cfg, text, target, direction);
+    let mut stream = make_stream(
+        kind, cfg, text, target, direction, glossary.clone(), deepl_glossary_id, source_lang,
+    );
     use futures_util::StreamExt;
     let mut full = String::new();
     while let Some(item) = stream.next().await {
@@ -361,7 +399,44 @@ async fn run_single_stream(
     if full.trim().is_empty() {
         return Err("引擎返回了空结果".into());
     }
+    check_and_warn_glossary(app, &win, window, kind, &glossary, &full);
     Ok(full)
+}
+
+/// 译后校验（传统引擎兜底）：命中术语的译法未出现在译文中 → 橙色提示行。
+/// 不强行替换，避免破坏语法。仅 deepl/aliyun；llm 已走 Prompt 注入。
+fn check_and_warn_glossary(
+    app: &AppHandle,
+    win: &tauri::WebviewWindow,
+    window: &str,
+    kind: EngineKind,
+    glossary: &[(String, String)],
+    translated: &str,
+) {
+    let _ = app;
+    if glossary.is_empty() || kind == EngineKind::Llm {
+        return;
+    }
+    let norm = store::glossary_norm(translated);
+    let missing: Vec<String> = glossary
+        .iter()
+        .filter(|(_s, t)| {
+            // 目标译法未出现，且原文术语仍原样留在译文里（真未生效）
+            !norm.contains(&store::glossary_norm(t))
+        })
+        .map(|(s, t)| format!("{s} 应为 {t}"))
+        .collect();
+    if missing.is_empty() {
+        return;
+    }
+    let msg = format!("术语未生效：{}", missing.join("；"));
+    eprintln!("[chatlingo] glossary warn ({}): {}", kind.id(), msg);
+    let payload = if window == QUICKBAR {
+        serde_json::json!({ "engine": kind.id(), "text": msg })
+    } else {
+        serde_json::json!({ "engine": kind.id(), "text": msg })
+    };
+    let _ = win.emit("glossary-warn", payload);
 }
 
 /// 主入口：按启用的引擎执行翻译。
@@ -386,8 +461,21 @@ async fn run_translation(
         return Err(format!("启用的引擎（{}）均不支持目标语言 {target}", names.join("、")));
     }
 
+    // ---- 术语匹配（总开关/最大条数走配置；缓存 key 纳入术语签名 → 增删即生效） ----
+    let glossary_terms: Vec<(String, String)> = if cfg.glossary.enabled {
+        let t = state(app).history.glossary_match(app, &text, cfg.glossary.max_terms);
+        if !t.is_empty() {
+            eprintln!("[chatlingo] glossary matched {} terms", t.len());
+        }
+        t
+    } else {
+        Vec::new()
+    };
+    let glossary_sig = glossary_terms.iter().map(|(s, t)| format!("{s}>{t}")).collect::<Vec<_>>().join("|");
+    let glossary_sig = default_hash(&glossary_sig);
+
     // ---- 译文缓存 ----
-    let cache_key = default_hash(&format!("{}|{}|{:?}", text, target, direction));
+    let cache_key = default_hash(&format!("{}|{}|{:?}|{}", text, target, direction, glossary_sig));
     if let Some(cached) = state(app).cache.lock().unwrap().get(cache_key).cloned() {
         eprintln!("[chatlingo] cache hit ({} chars)", cached.chars().count());
         if let Some(win) = app.get_webview_window(window) {
@@ -428,6 +516,14 @@ async fn run_translation(
         }
     }
 
+    // DeepL：命中术语时懒重建远端术语表资源（语言对不支持 → 降级译后校验）
+    let deepl_src = detect_deepl_source(&text);
+    let deepl_gid: Option<String> = if engines_on.contains(&EngineKind::Deepl) && !glossary_terms.is_empty() {
+        ensure_deepl_glossary(app, &cfg, deepl_src, &target, &glossary_terms).await
+    } else {
+        None
+    };
+
     let result = if engines_on.len() == 1 {
         let kind = engines_on[0];
         eprintln!("[chatlingo] engine: {}", kind.label());
@@ -444,8 +540,13 @@ async fn run_translation(
             }
             show_panel_bottom_right(app);
         }
-        let r = run_single_stream(app, window, kind, text.clone(), target.clone(), direction, &cfg, false).await;
-        if window == PANEL {
+        let r = run_single_stream(
+            app, window, kind, text.clone(), target.clone(), direction, &cfg, false,
+            glossary_terms.clone(),
+            if kind == EngineKind::Deepl { deepl_gid.clone() } else { None },
+            Some(deepl_src.to_string()),
+        )
+        .await;        if window == PANEL {
             if let Some(p) = app.get_webview_window(PANEL) {
                 let _ = p.emit(
                     "panel-done",
@@ -496,8 +597,11 @@ async fn run_translation(
             let win2 = win.clone();
             let is_quickbar = window == QUICKBAR;
             let id = ACTIVE_REQ.load(std::sync::atomic::Ordering::SeqCst);
+            let glossary2 = glossary_terms.clone();
+            let gid2 = if kind == EngineKind::Deepl { deepl_gid.clone() } else { None };
+            let src2 = Some(deepl_src.to_string());
             tasks.push(tauri::async_runtime::spawn(async move {
-                let mut stream = make_stream(kind, &cfg2, text2, target2, direction);
+                let mut stream = make_stream(kind, &cfg2, text2, target2, direction, glossary2.clone(), gid2, src2);
                 use futures_util::StreamExt;
                 let mut full = String::new();
                 while let Some(item) = stream.next().await {
@@ -532,6 +636,9 @@ async fn run_translation(
             match r {
                 Ok(translated) => {
                     any_ok = true;
+                    if let Some(w) = &win {
+                        check_and_warn_glossary(app, w, window, kind, &glossary_terms, &translated);
+                    }
                     if primary.is_none() {
                         primary = Some(translated.clone());
                     }
@@ -571,6 +678,67 @@ async fn run_translation(
 }
 
 static ACTIVE_REQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// DeepL 源语言码：脚本检测（glossary 创建与翻译均需显式 source_lang）
+fn detect_deepl_source(text: &str) -> &'static str {
+    match detect::detect(text) {
+        detect::Lang::Zh => "ZH",
+        detect::Lang::Ja => "JA",
+        detect::Lang::Ko => "KO",
+        detect::Lang::Latin | detect::Lang::Other => "EN",
+    }
+}
+
+/// DeepL 远端术语表懒重建：
+/// 脏（术语变更/首次）或语言对/内容签名变化 → 删旧建新；
+/// 语言对不受支持（HTTP 400）→ 记住失败状态不再反复重试，返回 None 走译后校验。
+async fn ensure_deepl_glossary(
+    app: &AppHandle,
+    cfg: &AppConfig,
+    src: &str,
+    target: &str,
+    terms: &[(String, String)],
+) -> Option<String> {
+    let Some(tgt) = engines::deepl::to_deepl_lang(target) else { return None };
+    let sig = default_hash(&terms.iter().map(|(s, t)| format!("{s}>{t}")).collect::<Vec<_>>().join("|"));
+    {
+        let st = state(app);
+        let st = st.deepl_glossary.lock().unwrap();
+        if !st.dirty && st.id.is_some() && st.lang_pair == Some((src.into(), tgt.into())) && st.sig == sig {
+            return st.id.clone();
+        }
+    }
+    let engine = engines::deepl::DeeplEngine::new(cfg.deepl.api_key.clone());
+    // 删旧资源防堆积
+    let old = { state(app).deepl_glossary.lock().unwrap().id.clone() };
+    if let Some(old_id) = old {
+        engine.delete_glossary(&old_id).await;
+    }
+    let tsv = terms.iter().map(|(s, t)| format!("{s}\t{t}")).collect::<Vec<_>>().join("\n");
+    eprintln!("[chatlingo] deepl glossary create: {src}->{tgt}, {} entries", terms.len());
+    match engine.create_glossary(src, tgt, &tsv).await {
+        Ok(id) => {
+            *state(app).deepl_glossary.lock().unwrap() = DeeplGlossaryCache {
+                dirty: false,
+                id: Some(id.clone()),
+                lang_pair: Some((src.into(), tgt.into())),
+                sig,
+            };
+            Some(id)
+        }
+        Err(e) => {
+            eprintln!("[chatlingo] deepl glossary create FAILED (fallback to post-check): {e}");
+            // 记住该语言对失败，避免每次翻译都撞 400
+            *state(app).deepl_glossary.lock().unwrap() = DeeplGlossaryCache {
+                dirty: false,
+                id: None,
+                lang_pair: Some((src.into(), tgt.into())),
+                sig,
+            };
+            None
+        }
+    }
+}
 
 // ---------- 命令 ----------
 
@@ -699,6 +867,64 @@ fn open_history(app: AppHandle) {
         let _ = win.show();
         let _ = win.set_focus();
         let _ = win.emit("history-refresh", ());
+    }
+}
+
+// ---------- 术语库命令 ----------
+
+/// DeepL 远端资源标脏（术语增删改/导入后调用）
+fn mark_deepl_glossary_dirty(app: &AppHandle) {
+    state(app).deepl_glossary.lock().unwrap().dirty = true;
+}
+
+#[tauri::command]
+fn glossary_list(app: AppHandle, query: String) -> Vec<store::GlossaryEntry> {
+    let list = state(&app).history.glossary_list(&app, &query);
+    list
+}
+
+#[tauri::command]
+fn glossary_upsert(app: AppHandle, entry: store::GlossaryEntry) -> Result<i64, String> {
+    if entry.source.trim().is_empty() || entry.target.trim().is_empty() {
+        return Err("原文与译法均不能为空".into());
+    }
+    let r = state(&app).history.glossary_upsert(&app, &entry).ok_or("数据库不可用")?;
+    mark_deepl_glossary_dirty(&app);
+    Ok(r)
+}
+
+#[tauri::command]
+fn glossary_delete(app: AppHandle, id: i64) -> Result<usize, String> {
+    let r = state(&app).history.glossary_delete(&app, id).ok_or("数据库不可用")?;
+    mark_deepl_glossary_dirty(&app);
+    Ok(r)
+}
+
+#[tauri::command]
+fn glossary_clear(app: AppHandle) -> Result<usize, String> {
+    let r = state(&app).history.glossary_clear(&app).ok_or("数据库不可用")?;
+    mark_deepl_glossary_dirty(&app);
+    Ok(r)
+}
+
+#[tauri::command]
+fn glossary_import(app: AppHandle, content: String) -> Result<Value, String> {
+    let (imported, skipped) = state(&app).history.glossary_import(&app, &content)?;
+    mark_deepl_glossary_dirty(&app);
+    Ok(serde_json::json!({ "imported": imported, "skipped": skipped }))
+}
+
+#[tauri::command]
+fn glossary_export(app: AppHandle) -> Result<String, String> {
+    Ok(state(&app).history.glossary_export(&app))
+}
+
+#[tauri::command]
+fn open_glossary(app: AppHandle) {
+    if let Some(win) = app.get_webview_window("glossary") {
+        let _ = win.show();
+        let _ = win.set_focus();
+        let _ = win.emit("glossary-refresh", ());
     }
 }
 
@@ -1105,10 +1331,11 @@ fn on_shortcut(app: &AppHandle, shortcut: &Shortcut) {
 
 fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let toggle_quick = MenuItem::with_id(app, "quick", "呼出翻译面板", true, None::<&str>)?;
+    let glossary_item = MenuItem::with_id(app, "glossary", "术语库…", true, None::<&str>)?;
     let history_item = MenuItem::with_id(app, "history", "翻译历史…", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "设置…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&toggle_quick, &history_item, &settings_item, &quit])?;
+    let menu = Menu::with_items(app, &[&toggle_quick, &glossary_item, &history_item, &settings_item, &quit])?;
 
     let icon = app
         .default_window_icon()
@@ -1120,6 +1347,7 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quick" => show_quickbar(app),
+            "glossary" => open_glossary(app.clone()),
             "history" => open_history(app.clone()),
             "settings" => open_settings(app.clone()),
             "quit" => app.exit(0),
@@ -1185,6 +1413,7 @@ pub fn run() {
                 cache: Mutex::new(TranslationCache::new()),
                 in_flight: Mutex::new(HashSet::new()),
                 history: HistoryStore::new(),
+                deepl_glossary: Mutex::new(DeeplGlossaryCache { dirty: true, ..Default::default() }),
             });
             let steps: Vec<(&str, Box<dyn FnOnce(&AppHandle) -> Result<(), Box<dyn std::error::Error>>>)> =
                 vec![];
@@ -1203,7 +1432,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // 设置/历史窗口点关闭只隐藏，不销毁，便于托盘再次唤起
-                if window.label() == SETTINGS || window.label() == "history" {
+                if window.label() == SETTINGS || window.label() == "history" || window.label() == "glossary" {
                     api.prevent_close();
                     let _ = window.hide();
                 }
@@ -1220,6 +1449,13 @@ pub fn run() {
             minimize_panel,
             open_settings,
             open_history,
+            open_glossary,
+            glossary_list,
+            glossary_upsert,
+            glossary_delete,
+            glossary_clear,
+            glossary_import,
+            glossary_export,
             history_list,
             history_clear,
             get_autostart,

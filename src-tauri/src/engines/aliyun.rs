@@ -1,7 +1,6 @@
 use super::{ChunkStream, TranslateParams};
 use base64::Engine;
 use hmac::{Hmac, Mac};
-use serde_json::Value;
 use sha1::Sha1;
 
 type HmacSha1 = Hmac<Sha1>;
@@ -115,10 +114,10 @@ impl AliyunEngine {
         if self.access_key_id.is_empty() || self.access_key_secret.is_empty() {
             return Err("AccessKeyId/Secret 未填写".into());
         }
-        self.translate_once("hello", "zh").await.map(|_| ())
+        self.translate_once("hello", "zh", None).await.map(|_| ())
     }
 
-    async fn translate_once(&self, text: &str, target: &str) -> Result<String, String> {
+    async fn translate_once(&self, text: &str, target: &str, context: Option<&str>) -> Result<String, String> {
         let Some(target) = to_aliyun_lang(target) else {
             return Err(format!("阿里云暂不支持目标语言：{target}"));
         };
@@ -144,6 +143,11 @@ impl AliyunEngine {
             ("Timestamp".into(), iso_time),
             ("Version".into(), "2018-10-12".into()),
         ];
+        if let Some(ctx) = context {
+            if !ctx.is_empty() {
+                params.push(("Context".into(), ctx.to_string()));
+            }
+        }
         params.sort_by(|a, b| a.0.cmp(&b.0));
         let query = params
             .iter()
@@ -204,11 +208,12 @@ impl super::TranslationEngine for AliyunEngine {
         };
         let text = params.text;
         let target = params.target_lang;
+        let context = super::glossary_context(&params.glossary);
         Box::pin(async_stream::stream! {
             let mut attempt = 0;
             loop {
                 attempt += 1;
-                match engine.translate_once(&text, &target).await {
+                match engine.translate_once(&text, &target, if context.is_empty() { None } else { Some(&context) }).await {
                     Ok(translated) => {
                         yield Ok(translated);
                         return;

@@ -18,6 +18,9 @@ async fn main() {
         text: "The retry mechanism uses exponential backoff with jitter.".into(),
         target_lang: "zh-CN".into(),
         direction: Direction::Output,
+        glossary: vec![],
+        glossary_id: None,
+        source_lang: None,
     });
     let mut got = 0;
     while let Some(item) = stream.next().await {

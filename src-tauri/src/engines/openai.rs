@@ -1,4 +1,4 @@
-use super::{system_prompt, ChunkStream, TranslateParams};
+use super::{glossary_prompt_block, system_prompt, ChunkStream, TranslateParams};
 use futures_util::StreamExt;
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -92,6 +92,7 @@ impl super::TranslationEngine for OpenAiCompatEngine {
             client: self.client.clone(),
         };
         let prompt = system_prompt(params.direction, &params.target_lang);
+        let prompt = format!("{prompt}{}", glossary_prompt_block(&params.glossary));
         Box::pin(async_stream::stream! {
             let url = format!("{}/chat/completions", engine.base_url.trim_end_matches('/'));
             let body = json!({

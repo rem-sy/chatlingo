@@ -131,6 +131,27 @@ impl Default for AliyunConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GlossaryConfig {
+    /// 术语库总开关
+    #[serde(default = "yes")]
+    pub enabled: bool,
+    /// 单次翻译最大注入条数（超出按 source 长度降序截断）
+    #[serde(default = "default_max_terms")]
+    pub max_terms: usize,
+}
+
+fn default_max_terms() -> usize {
+    30
+}
+
+impl Default for GlossaryConfig {
+    fn default() -> Self {
+        GlossaryConfig { enabled: true, max_terms: default_max_terms() }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     #[serde(default)]
     pub engine: EngineConfig,
@@ -147,6 +168,8 @@ pub struct AppConfig {
     pub clipboard: ClipboardConfig,
     #[serde(default = "default_output_target")]
     pub output_target: String,
+    #[serde(default)]
+    pub glossary: GlossaryConfig,
 }
 
 fn default_output_target() -> String {
@@ -174,6 +197,7 @@ impl Default for AppConfig {
             },
             clipboard: ClipboardConfig::default(),
             output_target: default_output_target(),
+            glossary: GlossaryConfig::default(),
         }
     }
 }

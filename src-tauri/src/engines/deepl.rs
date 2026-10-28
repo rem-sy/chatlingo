@@ -45,6 +45,58 @@ impl DeeplEngine {
         }
     }
 
+    /// 创建术语表资源（entries 为 TSV：source\ttarget 每行一对），返回 glossary_id。
+    /// 语言对不受支持等错误原样上抛（调用方降级为译后校验）。
+    pub async fn create_glossary(
+        &self,
+        source_lang: &str,
+        target_lang: &str,
+        entries_tsv: &str,
+    ) -> Result<String, String> {
+        let url = format!("{}/v2/glossaries", self.host());
+        let body = json!({
+            "name": format!("chatlingo-{}", std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)),
+            "source_lang": source_lang,
+            "target_lang": target_lang,
+            "entries": entries_tsv,
+            "entries_format": "tsv",
+        });
+        let resp = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("DeepL-Auth-Key {}", self.api_key))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("网络错误: {e}"))?;
+        let status = resp.status();
+        let text_body = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(format!("HTTP {status}: {}", &text_body[..text_body.len().min(300)]));
+        }
+        let v: serde_json::Value =
+            serde_json::from_str(&text_body).map_err(|e| format!("响应解析失败: {e}"))?;
+        v.pointer("/glossary_id")
+            .and_then(|t| t.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(|| "响应中没有 glossary_id".to_string())
+    }
+
+    /// 删除术语表资源（避免堆积；free 版上限 1000 个）
+    pub async fn delete_glossary(&self, glossary_id: &str) {
+        let url = format!("{}/v2/glossaries/{glossary_id}", self.host());
+        if let Err(e) = self
+            .client
+            .delete(&url)
+            .header("Authorization", format!("DeepL-Auth-Key {}", self.api_key))
+            .send()
+            .await
+        {
+            eprintln!("[chatlingo] deepl glossary delete failed: {e}");
+        }
+    }
+
     pub async fn quick_check(&self) -> Result<(), String> {
         let url = format!("{}/v2/usage", self.host());
         let resp = self
@@ -69,13 +121,22 @@ impl DeeplEngine {
         &self,
         text: &str,
         target: &str,
+        glossary_id: Option<&str>,
+        source_lang: Option<&str>,
     ) -> Result<String, String> {
         let url = format!("{}/v2/translate", self.host());
-        let body = json!({
+        let mut body = json!({
             "text": [text],
             "target_lang": to_deepl_lang(target),
             "preserve_formatting": true,
         });
+        if let Some(gid) = glossary_id {
+            body["glossary_id"] = json!(gid);
+            // DeepL 要求：使用 glossary 时必须显式 source_lang
+            if let Some(src) = source_lang {
+                body["source_lang"] = json!(src);
+            }
+        }
         let resp = self
             .client
             .post(&url)
@@ -106,11 +167,13 @@ impl super::TranslationEngine for DeeplEngine {
         };
         let text = params.text;
         let target = params.target_lang;
+        let glossary_id = params.glossary_id;
+        let source_lang = params.source_lang;
         Box::pin(async_stream::stream! {
             let mut attempt = 0;
             loop {
                 attempt += 1;
-                match engine.translate_once(&text, &target).await {
+                match engine.translate_once(&text, &target, glossary_id.as_deref(), source_lang.as_deref()).await {
                     Ok(translated) => {
                         yield Ok(translated);
                         return;

@@ -11,6 +11,12 @@ pub struct TranslateParams {
     pub target_lang: String,
     /// input = 用户输入方向（口语化、无需保 Markdown）；output = agent 输出方向（保 Markdown/代码）
     pub direction: Direction,
+    /// 命中的术语表（source → 固定译法）；各引擎自行决定注入方式
+    pub glossary: Vec<(String, String)>,
+    /// DeepL 远端术语表资源 id（lib.rs 懒重建后传入；其他引擎忽略）
+    pub glossary_id: Option<String>,
+    /// 检测出的源语言码（DeepL glossary 翻译必须显式 source_lang）
+    pub source_lang: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,8 +61,7 @@ pub fn lang_name(code: &str) -> String {
     }
 }
 
-pub fn system_prompt(direction: Direction, target: &str) -> String {
-    let target = lang_name(target);
+pub fn system_prompt(direction: Direction, target: &str) -> String {    let target = lang_name(target);
     match direction {
         Direction::Input => format!(
             "You are a professional translator. Translate the user's message into {target} \
@@ -74,4 +79,31 @@ pub fn system_prompt(direction: Direction, target: &str) -> String {
              Output ONLY the translated Markdown, nothing else."
         ),
     }
+}
+
+/// 大模型 system prompt 的术语注入段（空术语表返回空串）
+pub fn glossary_prompt_block(terms: &[(String, String)]) -> String {
+    if terms.is_empty() {
+        return String::new();
+    }
+    let lines: Vec<String> = terms.iter().map(|(s, t)| format!("- {s} → {t}")).collect();
+    format!(
+        "\n\nGlossary (MUST be followed strictly: translate these exact terms using the given \
+         renderings whenever they appear, in either direction):\n{}",
+        lines.join("\n")
+    )
+}
+
+/// 阿里云 Context 参数拼接：术语对照：RAG=检索增强生成；…（超长截断）
+pub fn glossary_context(terms: &[(String, String)]) -> String {
+    if terms.is_empty() {
+        return String::new();
+    }
+    let pairs: Vec<String> = terms.iter().map(|(s, t)| format!("{s}={t}")).collect();
+    let mut ctx = format!("术语对照：{}", pairs.join("；"));
+    // 阿里云 Context 有限长，保守截 900 字符
+    if ctx.chars().count() > 900 {
+        ctx = ctx.chars().take(900).collect();
+    }
+    ctx
 }
