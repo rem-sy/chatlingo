@@ -141,6 +141,25 @@
     </section>
 
     <section>
+      <h2>术语库</h2>
+      <div class="form-row">
+        <label>启用术语库</label>
+        <input type="checkbox" v-model="cfg.glossary.enabled" />
+        <span class="hint">翻译时自动把命中的术语按固定译法注入所有引擎，保证专有名词译法一致</span>
+      </div>
+      <div class="form-row">
+        <label>最大注入条数</label>
+        <input v-model.number="cfg.glossary.maxTerms" type="text" />
+        <span class="hint">命中过多时按术语长度优先截断（默认 30）</span>
+      </div>
+      <div class="form-row">
+        <label></label>
+        <button @click="openGlossary">打开术语库管理…</button>
+        <span class="hint">托盘菜单「术语库…」也可打开</span>
+      </div>
+    </section>
+
+    <section>
       <h2>通用</h2>
       <div class="form-row">
         <label>开机自启</label>
@@ -239,6 +258,7 @@ function defaultCfg(): AppConfig {
     aliyun: { enabled: true, accessKeyId: '', accessKeySecret: '' },
     quickbar: { hotkey: 'alt+t', targetLangs: ['en', 'ja'], defaultTarget: 'en', autoCopy: true, autoPaste: true },
     clipboard: { monitor: true, minLength: 20, visionModel: '' },
+    glossary: { enabled: true, maxTerms: 30 },
     outputTarget: 'zh-CN',
   }
 }
@@ -253,6 +273,7 @@ onMounted(async () => {
     if (!c.deepl) c.deepl = { enabled: true, apiKey: '' }
     if (!c.aliyun) c.aliyun = { enabled: true, accessKeyId: '', accessKeySecret: '' }
     cfg.value = c
+    if (!c.glossary) c.glossary = { enabled: true, maxTerms: 30 }
     const union = new Set<string>()
     if (c.engine?.enabled) SUPPORTED_LANGS.llm.forEach((x) => union.add(x))
     if (c.deepl?.enabled) SUPPORTED_LANGS.deepl.forEach((x) => union.add(x))
@@ -426,6 +447,10 @@ async function save() {
   } catch (e) {
     saveErr.value = String(e)
   }
+}
+
+function openGlossary() {
+  invoke('open_glossary')
 }
 
 async function test() {

@@ -21,10 +21,12 @@
           <button class="multi-copy" @click="copy(multiTexts[eng] || '')">复制</button>
         </div>
         <div class="output-text">{{ multiTexts[eng] }}</div>
+        <div v-if="glossaryWarns[eng]" class="glossary-warn">{{ glossaryWarns[eng] }}</div>
       </div>
     </div>
     <div v-else-if="translated || streaming" class="output-zone">
       <div class="output-text" :class="{ streaming }">{{ display }}</div>
+      <div v-if="glossaryWarns['']" class="glossary-warn">{{ glossaryWarns[''] }}</div>
     </div>
     <div class="toolbar" data-tauri-drag-region>
       <div class="langs">
@@ -69,6 +71,7 @@ const cfg = ref<AppConfig | null>(null)
 const note = ref('')
 const multiOrder = ref<string[]>([])
 const multiTexts = ref<Record<string, string>>({})
+const glossaryWarns = ref<Record<string, string>>({})
 let reqId = 0
 
 const ENGINE_NAMES: Record<string, string> = { llm: '大模型', deepl: 'DeepL', aliyun: '阿里云' }
@@ -132,6 +135,9 @@ onMounted(async () => {
       error.value = e.payload.error || '翻译失败'
     }
   })
+  await listen<{ engine?: string; text: string }>('glossary-warn', (e) => {
+    glossaryWarns.value[e.payload.engine || ''] = e.payload.text
+  })
   await listen('quickbar-reset', () => {
     source.value = ''
     translated.value = ''
@@ -139,6 +145,7 @@ onMounted(async () => {
     note.value = ''
     multiOrder.value = []
     multiTexts.value = {}
+    glossaryWarns.value = {}
     translating.value = false
     streaming.value = false
     autoDone.value = false
@@ -205,6 +212,7 @@ async function submit() {
   autoDone.value = false
   multiOrder.value = []
   multiTexts.value = {}
+  glossaryWarns.value = {}
   reqId += 1
   await invoke('submit_input', { text, target: target.value, id: reqId })
 }

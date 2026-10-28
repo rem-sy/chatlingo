@@ -27,10 +27,25 @@ export interface AliyunConfig {
   accessKeySecret: string
 }
 
+export interface GlossaryConfig {
+  enabled: boolean
+  maxTerms: number
+}
+
+export interface GlossaryEntry {
+  id: number
+  source: string
+  target: string
+  note: string
+  enabled: boolean
+  createdAt: number
+}
+
 export interface AppConfig {
   engine: EngineConfig
   deepl: DeeplConfig
   aliyun: AliyunConfig
+  glossary: GlossaryConfig
   quickbar: {
     hotkey: string
     targetLangs: string[]

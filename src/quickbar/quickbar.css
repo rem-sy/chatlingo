@@ -177,3 +177,14 @@ textarea:focus { border: none; box-shadow: none; }
   padding: 0 8px;
   font-size: 11px;
 }
+
+.glossary-warn {
+  color: #e0a05c;
+  background: rgba(224, 160, 92, 0.1);
+  border: 1px solid rgba(224, 160, 92, 0.35);
+  border-radius: 6px;
+  font-size: 11.5px;
+  padding: 3px 8px;
+  margin-top: 4px;
+  user-select: text;
+}

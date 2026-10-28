@@ -21,9 +21,11 @@
             <button class="mini" :title="'复制' + engLabel(eng) + '译文'" @click="copy(compareTexts[eng] || '')">复制</button>
           </div>
           <div class="translation markdown-body" v-html="renderMd(compareTexts[eng] || '')"></div>
+          <div v-if="glossaryWarns[eng]" class="glossary-warn">{{ glossaryWarns[eng] }}</div>
         </div>
       </template>
       <div v-else class="translation markdown-body" v-html="rendered"></div>
+      <div v-if="!compare && glossaryWarns['']" class="glossary-warn">{{ glossaryWarns[''] }}</div>
     </div>
   </div>
 </template>
@@ -45,6 +47,7 @@ const compareTexts = ref<Record<string, string>>({})
 const streaming = ref(false)
 const error = ref('')
 const note = ref('')
+const glossaryWarns = ref<Record<string, string>>({})
 const outputTarget = ref('zh-CN')
 
 const ENGINE_NAMES: Record<string, string> = {
@@ -86,7 +89,13 @@ async function onMountedHook() {
     translation.value = ''
     error.value = ''
     note.value = ''
+    glossaryWarns.value = {}
     streaming.value = true
+  })
+  await listen<{ engine?: string; text: string }>('glossary-warn', (e) => {
+    // 单引擎模式事件带 engine id 但面板无对应列 → 归到 ''
+    const key = compare.value && e.payload.engine ? e.payload.engine : ''
+    glossaryWarns.value[key] = e.payload.text
   })
   await listen<{ note: string }>('engine-note', (e) => {
     note.value = e.payload.note
