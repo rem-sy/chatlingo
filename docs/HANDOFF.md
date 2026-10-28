@@ -43,7 +43,7 @@ npx vite build            # 只出 dist，快速验前端编译
 ## 当前进度
 
 > **最新会话：会话 2（2026-10-28，M5 术语库 → v0.4.0）**。
-> 项目处于 **v0.4.0 已构建安装**状态（待用户实机验收 → Release）。
+> 项目处于 **v0.4.0 已发版**状态（tag + Release 双物料已上传，用户实机验收通过）。
 > 下一阶段 **M6 打磨**。
 > 会话记录按时间正序排列。
 
@@ -107,6 +107,8 @@ npx vite build            # 只出 dist，快速验前端编译
   - 设置项 `glossary: { enabled, maxTerms }`（Rust/api.ts/UI 三处同步）；版本 v0.4.0 三处
   - examples：`test_glossary_llm.rs` / `test_glossary_aliyun.rs` / `test_glossary_deepl.rs`
     （Key 从本机 config.json / ak.txt 读）
+  - 收尾修复：quickbar 单引擎模式译后校验提示行挂错键不显示（409a2c7，用户复测通过）
+  - 发版：tag v0.4.0 + GitHub Release 双物料（release-notes-v0.4.0.md，Python urllib）
 - **关键实现/坑**：
   12. **DeepL glossary 翻译必须显式 source_lang**：带 `glossary_id` 的 /v2/translate 缺
       source_lang 报 400；TranslateParams 增加 `source_lang`（脚本检测 ZH/JA/KO/默认 EN）
@@ -126,14 +128,13 @@ npx vite build            # 只出 dist，快速验前端编译
   UI 待用户实机验收
 - **收尾交接**：ROADMAP v0.4.x 置 ✅；03-开发计划 M5 勾选；提示词移入
   `docs/prompts/archive/`；产物归档 `D:\hobby\产物\chatlingo\v0.4.0\`
-  （setup.exe + chatlingo.exe）；Release notes 草稿 `release-notes-v0.4.0.md`
+  （setup.exe + chatlingo.exe）；Release 已发布（v0.4.0 tag + 双物料 + notes）
 
 ## 下一步队列
 
-1. **M5 收尾**：用户实机验收（术语增删即生效 / 100+ 截断 / 导入导出一致）→ 打 tag v0.4.0
-   + GitHub Release（notes 用 `release-notes-v0.4.0.md`，Python urllib UTF-8）
-2. **M6 打磨**：自动更新（updater）、安装包签名、macOS/Linux 适配、性能目标、文档站
-3. Backlog：按应用记忆方向偏好、双语对话侧栏、CLI、插件化引擎、术语库进阶（多术语表/使用统计）
+1. **M6 打磨**：自动更新（updater）、安装包签名、macOS/Linux 适配、性能目标、文档站
+2. Backlog：按应用记忆方向偏好、双语对话侧栏、CLI、插件化引擎、术语库进阶（多术语表/使用统计）
+3. 术语库候选优化：内置示例术语待用户清理后可考虑「首次启动预置默认术语库」选项
 
 ## 架构地图
 
