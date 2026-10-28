@@ -17,6 +17,10 @@
 
 ## 界面一览
 
+**演示**（Alt+T → 粘贴 → 三引擎并行翻译 → 术语校验）：
+
+![Demo GIF](docs/screenshots/demo.gif)
+
 **Alt+T 统一面板**（多引擎并行 + 术语强制 + 译后校验提示）：
 
 ![Alt+T 统一翻译面板](docs/screenshots/quickbar.png)
