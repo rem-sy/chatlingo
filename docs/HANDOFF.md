@@ -42,8 +42,8 @@ npx vite build            # 只出 dist，快速验前端编译
 
 ## 当前进度
 
-> **最新会话：会话 3（2026-10-28 下午，v0.4.0 收尾 + M6 立项设计）**。
-> 项目处于 **v0.4.0 已发版（含新图标/README 截图）** 状态；下一阶段 **M6a 自动更新（v0.5.0）**。
+> **最新会话：会话 4（2026-10-28 晚，M6a+M6b，v0.5.0 已发版）**。
+> 项目处于 **v0.5.0 已发版（updater 全链路验证通过）** 状态；剩余 **M6c 发布工程（v1.0，待用户确认）**。
 > 会话记录按时间正序排列。
 
 ## 会话记录
@@ -171,15 +171,66 @@ npx vite build            # 只出 dist，快速验前端编译
   开工提示词 `docs/prompts/M6_POLISH_PROMPT.md`；开工第一件事 = signer 密钥对
   生成与双备份，**私钥丢失更新渠道永久作废，先备份后开发**
 
+## 会话 4（2026-10-28 晚 · M6a 自动更新 + M6b 性能，v0.4.0 → v0.5.0）
+
+- **交付**：
+  - **signer 密钥对**：`tauri signer generate` 生成，公钥指纹 `F7E696C8403A5293`。
+    私钥+密码两处离线备份：`D:\hobby\产物\chatlingo\signing\`（chatlingo.key /
+    chatlingo.key.pub / chatlingo.key.password.txt）+ `C:\temp\chatlingo\signing-backup\`。
+    **建议用户再自备一处**；私钥或密码丢失 = 更新渠道永久作废
+  - **updater 集成**：tauri-plugin-updater/process/notification；`createUpdaterArtifacts: true`
+    + pubkeys + endpoint（GitHub latest.json 固定 URL）+ nsis passive；托盘「检查更新…」；
+    设置页「通用」版本区块（当前版本/检查/下载进度/失败兜底「打开 Release 页」，Rust 命令
+    `open_release_page`）；启动 8s 静默检查（发现新版本 → 系统通知 + 设置页提示条；
+    失败仅 eprintln）
+  - **发版脚本** `scripts/release.py`：五步流程（版本三处校验→杀进程带签名构建→
+    生成 latest.json→GitHub Release + curl 上传三资产→归档产物目录）；token 从
+    ~/.git-credentials 解出；自动探测 Clash 代理（通则走 7890，否则直连）
+  - **M6b 懒建窗口**：settings/history/glossary/snip 首唤起创建（`open_util_window`
+    统一 get-or-create；托盘/单实例回调/设置页按钮/截图入口全覆盖）；quickbar/panel
+    启动即建；panel 的 marked/dompurify 懒加载（入口 chunk 73KB→4.4KB）
+  - **发版**：v0.5.0 Release（setup.exe + chatlingo.exe + latest.json，归档
+    `D:\hobby\产物\chatlingo\v0.5.0\`）；本地已装 v0.5.0
+- **实测数据**：
+  - 基线 v0.4.0：冷启动（spawn→setup done）**998ms**；常驻私有内存（chatlingo+webview2
+    树 PrivateMemory 总和）**~390MB**
+  - v0.5.0：冷启动 **~830ms ✓**（<1s 达标）；常驻私有内存 **~233MB（<80MB 未达标）**——
+    WebView2 基础进程（browser/gpu/utility+2 渲染进程）即 ~180MB，双核心窗口架构地板；
+    进一步压降只能懒建 panel（伤剪贴板监听响应），裁决保留现状
+  - **升级全链路**：0.4.90 替身版（集成 updater、endpoint 指本地 http 服务）实测
+    「8.5s 静默检查→检测到 0.5.0→下载 4.3MB→minisign 验签→NSIS passive 静默安装→
+    自动重启→安装版变 0.5.0」全链路通过；懒建 settings 窗口经单实例二次启动回调验证
+- **关键实现/坑**：
+  22. **tauri.conf 的 pubkey 必须是 .pub 文件完整内容的 base64**（`dW50cnVzdGVk...`
+      开头，即 base64(两行文本)），不是裸 key 行也不是 base64(key bytes)——两种错法
+      分别报 Invalid length 57 / invalid utf-8
+  23. **updater endpoint 拒绝 http**：测试需本地源时必须加
+      `plugins.updater.dangerousInsecureTransportProtocol: true`（仅测试版，勿提交）
+  24. **私有仓 latest.json 匿名 404**：updater 不带认证，仓库公开前 GitHub 渠道
+      天然不可用（属预期；转公开后即通）。全链路验证用本地 http 服务替代完成
+  25. **v0.4.0 无法原生升级**：updater 必须存在于旧版本，故「v0.4.0→v0.5.0」
+      字面验收不可行；用同代码的 0.4.90 替身版验证（该替身补丁未提交，已还原）
+  26. **Windows 随机端口 bind 10013**：8765 被系统拒绑（非 excludedportrange 可见
+      范围），换 8899 即可——本地测试服务器起不来先换端口
+  27. **密钥泄漏审计（M6c 前置发现）**：`examples/test_engine.rs` 历史（c6f4e85 起）
+      硬编码 windhub API Key（sk-0PW…）。当前文件已改为读环境变量/config.json，
+      **但 git 历史仍在——转公开前必须 filter-repo 重写历史或作废该 Key**；
+      DeepL/阿里云 Key 全历史扫描无泄漏；截图脱敏未评估（本会话无图像能力，
+      转公开前人工核对 quickbar/glossary.png 是否含 windhub Base URL 等敏感信息）
+  28. **Python subprocess text 模式在 GBK 机器上传 UTF-8 JSON 会乱码**：curl 传
+      release body 一律 `input=body.encode('utf-8')` 字节流
+- **收尾交接**：03-开发计划 M6a/M6b 勾选（附实测数据与 80MB 未达标说明）；ROADMAP
+  v0.5.0 置 ✅；提示词移 `docs/prompts/archive/`；**下一步 M6c**：泄漏历史重写
+  （陷阱 27）→ Demo GIF → README 校对 → 截图脱敏评估 → 转公开 → 验证 GitHub 更新
+  渠道真实可用 → v1.0 Release（均待用户确认后执行）
+
 ## 下一步队列
 
-1. **M6a 自动更新（v0.5.0）**（提示词 `docs/prompts/M6_POLISH_PROMPT.md`，设计
-   `docs/design/POLISH_DESIGN.md`）——signer 密钥 → updater 集成 → 托盘/设置入口 →
-   发版脚本 scripts/release.py → v0.4.0→v0.5.0 升级全链路实测
-2. **M6b 性能**：懒建窗口 + 编译参数 → 冷启动<1s/内存<80MB
-3. **M6c 发布工程**：Demo GIF、泄漏审计、仓库转公开 → v1.0
-4. Backlog：Authenticode、macOS/Linux 出包、按应用记忆方向、双语对话侧栏、CLI、
-   插件化引擎、术语库进阶
+1. **M6c 发布工程（v1.0，待用户确认）**：git 历史重写清除 sk-0PW… Key（或作废该
+   Key）→ Demo GIF（Alt+T 翻译 + 多引擎对比 + 术语提示）→ README 校对 →
+   截图脱敏人工评估 → 仓库转公开 → 装旧版实测 GitHub 渠道真实更新 → v1.0 tag/Release
+2. Backlog：Authenticode、macOS/Linux 出包、按应用记忆方向、双语对话侧栏、CLI、
+   插件化引擎、术语库进阶、文档站
 
 ## 架构地图
 
