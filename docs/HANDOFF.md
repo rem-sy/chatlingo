@@ -121,6 +121,12 @@ npx vite build            # 只出 dist，快速验前端编译
   16. **阿里云 Key 不在 config.json**（本机留空）：examples 从 `C:\temp\chatlingo\ak.txt` 读
   17. **TranslateGeneral 对已是目标语的文本原样返回**：测术语注入要用纯外文句子，
       「帮我实现一个 RAG 系统」（中文主体）会被判 zh→zh 直接跳过
+  18. **换图标后构建不生效**：cargo build script 只按 `rerun-if-changed` 重跑，仅改
+      `icons/*` 不动 Rust 源码时新图标不会嵌进 exe（.rsrc 仍是默认 Tauri 图标）。
+      必须额外 touch `tauri.conf.json`/`build.rs` 强制重跑；验证方式：解析 exe 的
+      RT_ICON PNG 帧取中心色（`C:\temp\chatlingo\pe_icons.py`），别信
+      ExtractAssociatedIcon（走图标缓存会撒谎）。装完任务栏/资源管理器若仍显旧图，
+      `ie4uinit.exe -show` 刷缓存
 - **验证**：`test_glossary`（CRUD/冲突/匹配/截断/归一/往返）全过；`test_glossary_llm`
   PASSED（windhub glm-4.5-flash 含「检索增强生成」）；`test_glossary_deepl` PASSED
   （en→zh glossary 资源创建+删除，译文含「检索增强生成」）；阿里云 Context 软约束符合
