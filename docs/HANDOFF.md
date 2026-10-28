@@ -42,8 +42,8 @@ npx vite build            # 只出 dist，快速验前端编译
 
 ## 当前进度
 
-> **最新会话：会话 3（2026-10-28 下午，v0.4.0 收尾 + 短暂移动端调研后撤销）**。
-> 项目处于 **v0.4.0 已发版（含新图标/README 截图）** 状态；下一阶段 **M6 打磨**。
+> **最新会话：会话 3（2026-10-28 下午，v0.4.0 收尾 + M6 立项设计）**。
+> 项目处于 **v0.4.0 已发版（含新图标/README 截图）** 状态；下一阶段 **M6a 自动更新（v0.5.0）**。
 > 会话记录按时间正序排列。
 
 ## 会话记录
@@ -147,7 +147,10 @@ npx vite build            # 只出 dist，快速验前端编译
   - M7 移动端：当日完成调研并产出方案，**同日用户撤销立项**（手机端已有可直接用
     的应用，不值维护双端）；方案文档（MOBILE_DESIGN/M7 提示词）已删，
     git 历史 7b70958 可查；ROADMAP 顺序裁决留有撤销记录
-  - 文档同步：ROADMAP 顺序裁决；03-开发计划；HANDOFF 本节
+  - M6 打磨立项：更新渠道裁决 **GitHub Releases**（latest.json 固定 URL + minisign
+    验签 + 静默安装 + 代理失败兜底）；产出 `docs/design/POLISH_DESIGN.md`
+    （范围裁决/更新架构/性能方案/发布工程）+ `docs/prompts/M6_POLISH_PROMPT.md`
+  - 文档同步：ROADMAP 顺序裁决；03-开发计划 M6 节重写；HANDOFF 本节
 - **关键实现/坑**：
   18. （前移自会话 2 补录）**换图标后构建不生效**：build script 只按 rerun-if-changed
       重跑，仅改 icons/* 不嵌新图；必须 touch tauri.conf.json/build.rs；验证用 PE
@@ -163,15 +166,20 @@ npx vite build            # 只出 dist，快速验前端编译
       设置页保存即落盘）；12 条演示术语在库（备注「内置示例术语」）
 - **验证**：新图标经 PE 帧解析确认嵌入（背景色精确匹配密码本）；用户实机确认
   ∞ 图标；Release 资产 API 核对齐套；移动端调研经 tauri 官网/多方信源交叉确认
-- **收尾交接**：v0.4.0 全部收口（Release/归档/文档/图标）；下一阶段 **M6 打磨**，
-  开工时先在本仓库建 M6 设计文档与提示词（自动更新 updater / 签名 / macOS/Linux /
-  性能 / 文档站，见 ROADMAP）
+- **收尾交接**：v0.4.0 全部收口（Release/归档/文档/图标）；**M6 已立项**
+  （更新渠道裁决 GitHub Releases），设计 `docs/design/POLISH_DESIGN.md` +
+  开工提示词 `docs/prompts/M6_POLISH_PROMPT.md`；开工第一件事 = signer 密钥对
+  生成与双备份，**私钥丢失更新渠道永久作废，先备份后开发**
 
 ## 下一步队列
 
-1. **M6 打磨**：自动更新（updater + 更新服务器/静态 JSON）、Windows 安装包签名、
-   macOS/Linux 适配、性能目标（冷启动<1s/内存<80MB）、文档站 → v1.0
-2. Backlog：按应用记忆方向偏好、双语对话侧栏、CLI、插件化引擎、术语库进阶（多术语表/使用统计）、仓库转公开
+1. **M6a 自动更新（v0.5.0）**（提示词 `docs/prompts/M6_POLISH_PROMPT.md`，设计
+   `docs/design/POLISH_DESIGN.md`）——signer 密钥 → updater 集成 → 托盘/设置入口 →
+   发版脚本 scripts/release.py → v0.4.0→v0.5.0 升级全链路实测
+2. **M6b 性能**：懒建窗口 + 编译参数 → 冷启动<1s/内存<80MB
+3. **M6c 发布工程**：Demo GIF、泄漏审计、仓库转公开 → v1.0
+4. Backlog：Authenticode、macOS/Linux 出包、按应用记忆方向、双语对话侧栏、CLI、
+   插件化引擎、术语库进阶
 
 ## 架构地图
 

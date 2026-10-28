@@ -8,11 +8,13 @@
 | v0.2.x | DeepL + 双引擎对比、译文缓存/请求合并、翻译历史、开机自启、截图翻译、数据目录/便携模式、语言目录、UI 重铸、真半透明、面板拖动/缩放/分界线、快捷键点击录入、模型列表获取 | ✅ 已发版（tag v0.2.7 + Release，2026-10-26） |
 | v0.3.x | 引擎开关式重构（无隐式降级链）、阿里云机器翻译引擎（国内直连）、语种×渠道联动、多引擎结果窗口内堆叠 | ✅ 已发版（tag v0.3.2 + Release，2026-10-27） |
 | **v0.4.x (M5)** | **术语库**——SQLite glossary 表 + 管理窗口 + 大模型 Prompt 注入 + DeepL Glossary API / 阿里云 Context 适配 + 译后校验。设计 [design/GLOSSARY_DESIGN.md](design/GLOSSARY_DESIGN.md) / 提示词 [prompts/M5_GLOSSARY_PROMPT.md](prompts/M5_GLOSSARY_PROMPT.md) | ✅ 已实现（v0.4.0，2026-10-28；三引擎 example 实测 + 用户实机验收） |
-| v1.0 (M6) | 自动更新（updater）、安装包签名、macOS/Linux、性能（冷启动<1s/内存<80MB）、文档站、仓库转公开 | 🔄 下一阶段 |
+| **v0.5.x → v1.0 (M6)** | **打磨发布**——自动更新（tauri-plugin-updater + **GitHub Releases 更新源** latest.json/minisign 验签）、发版脚本化、性能（懒建窗口/冷启动<1s/内存<80MB）、Demo GIF、仓库转公开。设计 [design/POLISH_DESIGN.md](design/POLISH_DESIGN.md) / 提示词 [prompts/M6_POLISH_PROMPT.md](prompts/M6_POLISH_PROMPT.md)；macOS/Linux 出包与 Authenticode 后置 Backlog | 🔄 下一阶段（设计完成 2026-10-28） |
 | 远期 | 按应用记忆方向偏好、双语对话侧栏、CLI、插件化第三方引擎 | Backlog |
 
 ## 顺序裁决
 
+- M6 更新渠道定为 **GitHub Releases**（2026-10-28 用户裁决）：latest.json 固定 URL +
+  minisign 验签，无需自建服务器；Authenticode/macOS/Linux 出包后置 Backlog。
 - 移动端规划（2026-10-28 曾立项 M7）当日撤销：手机端已有可直接使用的应用，不值得
   维护双端；方案文档已删（git 历史 7b70958 可查）。
 - M5 术语库优先于 M6 打磨（2026-10-28 用户裁决）：术语一致性是当时翻译质量的最大痛点。
