@@ -42,8 +42,8 @@ npx vite build            # 只出 dist，快速验前端编译
 
 ## 当前进度
 
-> **最新会话：会话 3（2026-10-28 下午，v0.4.0 收尾 + M7 移动端调研规划）**。
-> 项目处于 **v0.4.0 已发版（含新图标/README 截图）** 状态；下一阶段 **M7 移动端（Android）**。
+> **最新会话：会话 3（2026-10-28 下午，v0.4.0 收尾 + 短暂移动端调研后撤销）**。
+> 项目处于 **v0.4.0 已发版（含新图标/README 截图）** 状态；下一阶段 **M6 打磨**。
 > 会话记录按时间正序排列。
 
 ## 会话记录
@@ -144,10 +144,10 @@ npx vite build            # 只出 dist，快速验前端编译
     RGB(28,69,123) + 白色单笔画，生成脚本 `C:\temp\chatlingo\make_icon_series.py`）
   - quickbar 单引擎模式译后校验提示行不显示修复（409a2c7）；Release 双物料换新图标
     构建（setup 3.4MB + exe 12.9MB）
-  - M7 移动端调研：Tauri 2 mobile 现状核实（2.10.x 稳定）、桌面特性×移动端可行性
-    矩阵、TLS/平台拆分方案；产出 `docs/design/MOBILE_DESIGN.md`（实现级设计 +
-    M7a/b/c 里程碑）+ `docs/prompts/M7_MOBILE_PROMPT.md`（开工提示词）
-  - 文档同步：ROADMAP 加 M7/M8 行 + 顺序裁决；03-开发计划 M7 节；HANDOFF 本节
+  - M7 移动端：当日完成调研并产出方案，**同日用户撤销立项**（手机端已有可直接用
+    的应用，不值维护双端）；方案文档（MOBILE_DESIGN/M7 提示词）已删，
+    git 历史 7b70958 可查；ROADMAP 顺序裁决留有撤销记录
+  - 文档同步：ROADMAP 顺序裁决；03-开发计划；HANDOFF 本节
 - **关键实现/坑**：
   18. （前移自会话 2 补录）**换图标后构建不生效**：build script 只按 rerun-if-changed
       重跑，仅改 icons/* 不嵌新图；必须 touch tauri.conf.json/build.rs；验证用 PE
@@ -163,17 +163,15 @@ npx vite build            # 只出 dist，快速验前端编译
       设置页保存即落盘）；12 条演示术语在库（备注「内置示例术语」）
 - **验证**：新图标经 PE 帧解析确认嵌入（背景色精确匹配密码本）；用户实机确认
   ∞ 图标；Release 资产 API 核对齐套；移动端调研经 tauri 官网/多方信源交叉确认
-- **收尾交接**：M7 开工提示词 `docs/prompts/M7_MOBILE_PROMPT.md`；
-  **开工第一件事是环境搭建验证（java/ANDROID_HOME/rustup targets）**，勿先动 lib.rs
+- **收尾交接**：v0.4.0 全部收口（Release/归档/文档/图标）；下一阶段 **M6 打磨**，
+  开工时先在本仓库建 M6 设计文档与提示词（自动更新 updater / 签名 / macOS/Linux /
+  性能 / 文档站，见 ROADMAP）
 
 ## 下一步队列
 
-1. **M7 移动端**（提示词 `docs/prompts/M7_MOBILE_PROMPT.md`，设计
-   `docs/design/MOBILE_DESIGN.md`）——环境搭建 → TLS 特性化 → 平台拆分 →
-   Android MVP 四页签 → 签名 APK（v0.5.0）
-2. **M6 打磨**（顺延）：自动更新（updater）、安装包签名、macOS/Linux 适配、性能目标、文档站
-3. Backlog：按应用记忆方向偏好、双语对话侧栏、CLI、插件化引擎、术语库进阶（多术语表/使用统计）、
-   移动端云同步（本地优先原则，仅在有强需求时考虑）、Play Store 上架
+1. **M6 打磨**：自动更新（updater + 更新服务器/静态 JSON）、Windows 安装包签名、
+   macOS/Linux 适配、性能目标（冷启动<1s/内存<80MB）、文档站 → v1.0
+2. Backlog：按应用记忆方向偏好、双语对话侧栏、CLI、插件化引擎、术语库进阶（多术语表/使用统计）、仓库转公开
 
 ## 架构地图
 
