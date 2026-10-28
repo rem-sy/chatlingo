@@ -34,10 +34,27 @@
 import { ref, computed } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import { invoke, langLabel } from '../shared/api'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
 import '../shared/base.css'
 import './panel.css'
+
+// M6b：marked/dompurify 较大，懒加载（首渲染前就绪即可，不阻塞窗口创建）
+type MdRenderer = { parse: (s: string) => string; sanitize: (h: string) => string }
+let md: MdRenderer | null = null
+const mdReady = ref(false)
+const escapeHtml = (s: string) =>
+  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
+void (async () => {
+  try {
+    const [m, d] = await Promise.all([import('marked'), import('dompurify')])
+    md = {
+      parse: (s) => m.marked.parse(s, { async: false }) as string,
+      sanitize: (h) => d.default.sanitize(h),
+    }
+  } catch {
+    md = { parse: escapeHtml, sanitize: (h) => h }
+  }
+  mdReady.value = true
+})()
 
 const original = ref('')
 const translation = ref('')
@@ -70,11 +87,14 @@ const statusText = computed(() =>
 
 function renderMd(text: string): string {
   if (!text) return ''
-  const html = marked.parse(text, { async: false }) as string
-  return DOMPurify.sanitize(html)
+  if (!md) return escapeHtml(text)
+  return md.sanitize(md.parse(text))
 }
 
-const rendered = computed(() => renderMd(translation.value))
+const rendered = computed(() => {
+  void mdReady.value
+  return renderMd(translation.value)
+})
 
 onMountedHook()
 

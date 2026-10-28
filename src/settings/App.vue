@@ -184,6 +184,26 @@
         <label></label>
         <span class="test-result" :class="dataDirOk ? 'ok' : 'bad'">{{ dataDirMsg }}</span>
       </div>
+      <div class="form-row">
+        <label>当前版本</label>
+        <span>v{{ appVersion }}</span>
+        <button :disabled="updateBusy" @click="manualCheckUpdate">{{ updateBusy ? updateStatus : '检查更新' }}</button>
+        <span class="hint">更新源：GitHub Releases</span>
+      </div>
+      <div class="form-row" v-if="updateStatus">
+        <label></label>
+        <span class="test-result" :class="updateOk ? 'ok' : 'bad'">{{ updateStatus }}</span>
+      </div>
+      <div class="form-row" v-if="pendingUpdate">
+        <label></label>
+        <button class="primary" :disabled="updateBusy" @click="installUpdate">{{ updateBusy ? updateStatus : `下载并安装 v${pendingUpdate.version}` }}</button>
+        <span class="hint">{{ (pendingUpdate.notes || '').slice(0, 120) }}</span>
+      </div>
+      <div class="form-row" v-if="updateFailed">
+        <label></label>
+        <button @click="openReleasePage">打开 Release 页</button>
+        <span class="hint">检查或下载失败（网络/代理）时可手动下载安装</span>
+      </div>
     </section>
 
     <footer>
@@ -199,6 +219,9 @@ import { ref, computed, onMounted } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { invoke, type AppConfig, LANG_CATALOG, langDef, SUPPORTED_LANGS } from '../shared/api'
+import { check as updaterCheck, type Update } from '@tauri-apps/plugin-updater'
+import { relaunch } from '@tauri-apps/plugin-process'
+import { getVersion } from '@tauri-apps/api/app'
 import '../shared/base.css'
 import './settings.css'
 
@@ -289,6 +312,20 @@ onMounted(async () => {
     autostartErr.value = '状态读取失败'
   }
   await refreshDataInfo()
+  try {
+    appVersion.value = await getVersion()
+  } catch {
+    appVersion.value = '?'
+  }
+  // 托盘「检查更新…」→ 设置页执行手动检查
+  await listen('updater-check', () => {
+    if (!updateBusy.value) manualCheckUpdate()
+  })
+  // 启动 8s 静默检查发现新版本 → 提示条
+  await listen<{ version: string }>('updater-available', (e) => {
+    updateOk.value = true
+    updateStatus.value = `发现新版本 v${e.payload.version}，点击「检查更新」查看`
+  })
 })
 
 interface DataInfo {
@@ -451,6 +488,77 @@ async function save() {
 
 function openGlossary() {
   invoke('open_glossary')
+}
+
+// ---------- 自动更新 ----------
+const appVersion = ref('…')
+const updateBusy = ref(false)
+const updateStatus = ref('')
+const updateOk = ref<boolean | null>(null)
+const updateFailed = ref(false)
+const pendingUpdate = ref<Update | null>(null)
+
+async function manualCheckUpdate() {
+  updateBusy.value = true
+  updateStatus.value = '检查中…'
+  updateOk.value = null
+  updateFailed.value = false
+  pendingUpdate.value = null
+  try {
+    const update = await updaterCheck()
+    if (update) {
+      pendingUpdate.value = update
+      updateOk.value = true
+      updateStatus.value = `发现新版本 v${update.version}，可下载安装`
+    } else {
+      updateOk.value = true
+      updateStatus.value = '已是最新版本'
+    }
+  } catch (e) {
+    updateOk.value = false
+    updateFailed.value = true
+    updateStatus.value = `检查失败：${e}`
+  } finally {
+    updateBusy.value = false
+  }
+}
+
+async function installUpdate() {
+  const update = pendingUpdate.value
+  if (!update) return
+  updateBusy.value = true
+  updateFailed.value = false
+  let total = 0
+  let downloaded = 0
+  try {
+    await update.downloadAndInstall((event) => {
+      switch (event.event) {
+        case 'Started':
+          total = event.data.contentLength ?? 0
+          updateStatus.value = '下载中…'
+          break
+        case 'Progress':
+          downloaded += event.data.chunkLength
+          updateStatus.value = total
+            ? `下载中… ${Math.min(100, Math.round((downloaded / total) * 100))}%`
+            : `下载中… ${(downloaded / 1048576).toFixed(1)}MB`
+          break
+        case 'Finished':
+          updateStatus.value = '安装中…（即将自动重启）'
+          break
+      }
+    })
+    await relaunch()
+  } catch (e) {
+    updateOk.value = false
+    updateFailed.value = true
+    updateStatus.value = `下载/安装失败：${e}`
+    updateBusy.value = false
+  }
+}
+
+function openReleasePage() {
+  invoke('open_release_page')
 }
 
 async function test() {

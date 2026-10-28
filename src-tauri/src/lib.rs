@@ -115,36 +115,8 @@ fn create_windows(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             }
         };
     }
-    try_step!(
-        "settings",
-        WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App("settings.html".into()))
-            .title("ChatLingo 设置")
-            .inner_size(680.0, 720.0)
-            .resizable(true)
-            .visible(false)
-            .shadow(true)
-            .build()
-    );
-    try_step!(
-        "history",
-        WebviewWindowBuilder::new(app, "history", WebviewUrl::App("history.html".into()))
-            .title("ChatLingo 翻译历史")
-            .inner_size(560.0, 640.0)
-            .resizable(true)
-            .visible(false)
-            .shadow(true)
-            .build()
-    );
-    try_step!(
-        "glossary",
-        WebviewWindowBuilder::new(app, "glossary", WebviewUrl::App("glossary.html".into()))
-            .title("ChatLingo 术语库")
-            .inner_size(640.0, 620.0)
-            .resizable(true)
-            .visible(false)
-            .shadow(true)
-            .build()
-    );
+    // M6b 懒建窗口：启动只建核心交互窗口（quickbar/panel）；
+    // settings/history/glossary 首唤起时创建（open_util_window），snip 首截图时创建
     try_step!(
         "quickbar",
         WebviewWindowBuilder::new(app, QUICKBAR, WebviewUrl::App("quickbar.html".into()))
@@ -176,20 +148,63 @@ fn create_windows(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             .transparent(true)
             .build()
     );
-    try_step!(
-        "snip",
-        WebviewWindowBuilder::new(app, SNIP, WebviewUrl::App("snip.html".into()))
-            .title("ChatLingo Snip")
-            .decorations(false)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .resizable(false)
-            .visible(false)
-            .shadow(false)
-            .transparent(true)
-            .build()
-    );
     Ok(())
+}
+
+/// 懒建工具窗口（settings/history/glossary）：存在即显示，不存在即创建（直接可见）。
+/// 全部入口（托盘/单实例回调/设置页按钮）统一走这里，保证 get-or-create。
+fn open_util_window(app: &AppHandle, label: &str, title: &str, html: &str, w: f64, h: f64) {
+    if let Some(win) = app.get_webview_window(label) {
+        let _ = win.show();
+        let _ = win.set_focus();
+        let refresh = match label {
+            "history" => Some("history-refresh"),
+            "glossary" => Some("glossary-refresh"),
+            _ => None,
+        };
+        if let Some(ev) = refresh {
+            let _ = win.emit(ev, ());
+        }
+        return;
+    }
+    match WebviewWindowBuilder::new(app, label, WebviewUrl::App(html.into()))
+        .title(title)
+        .inner_size(w, h)
+        .resizable(true)
+        .visible(true)
+        .shadow(true)
+        .build()
+    {
+        Ok(_) => eprintln!("[chatlingo] window created (lazy): {}", label),
+        Err(e) => eprintln!("[chatlingo] window create FAIL (lazy): {} -> {:?}", label, e),
+    }
+}
+
+/// 截图选区窗口懒建（隐藏创建，start_screenshot 再铺屏显示）
+fn ensure_snip_window(app: &AppHandle) -> bool {
+    if app.get_webview_window(SNIP).is_some() {
+        return true;
+    }
+    match WebviewWindowBuilder::new(app, SNIP, WebviewUrl::App("snip.html".into()))
+        .title("ChatLingo Snip")
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .visible(false)
+        .shadow(false)
+        .transparent(true)
+        .build()
+    {
+        Ok(_) => {
+            eprintln!("[chatlingo] window created (lazy): snip");
+            true
+        }
+        Err(e) => {
+            eprintln!("[chatlingo] window create FAIL (lazy): snip -> {:?}", e);
+            false
+        }
+    }
 }
 
 /// 用户手动拖动过面板后记住位置，之后 Alt+T 不再重定位到光标
@@ -740,6 +755,56 @@ async fn ensure_deepl_glossary(
     }
 }
 
+// ---------- 自动更新 ----------
+
+/// 启动延迟 8s 静默检查：失败静默（仅 eprintln）；发现新版本 → 系统通知 + 通知设置页
+fn spawn_updater_silent_check(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+        eprintln!("[chatlingo] updater: silent check start");
+        use tauri_plugin_updater::UpdaterExt;
+        let checked = match app.updater() {
+            Ok(u) => u.check().await.map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        };
+        match checked {
+            Ok(Some(update)) => {
+                eprintln!("[chatlingo] updater: new version {} available", update.version);
+                // 系统通知（尽力而为，失败不影响）
+                use tauri_plugin_notification::NotificationExt;
+                let _ = app
+                    .notification()
+                    .builder()
+                    .title("ChatLingo 发现新版本")
+                    .body(format!("v{} 可用，点击托盘「设置…」→「检查更新」安装", update.version))
+                    .show();
+                // 设置页在打开时监听该事件展示提示条
+                if let Some(win) = app.get_webview_window(SETTINGS) {
+                    let _ = win.emit(
+                        "updater-available",
+                        serde_json::json!({ "version": update.version, "notes": update.body.clone().unwrap_or_default() }),
+                    );
+                }
+            }
+            Ok(None) => eprintln!("[chatlingo] updater: up to date"),
+            Err(e) => eprintln!("[chatlingo] updater: silent check failed (ignore): {e}"),
+        }
+    });
+}
+
+/// 托盘「检查更新…」：打开设置页并触发前端手动检查流程
+/// （窗口可能刚懒建，事件延迟发送等前端 listener 就绪）
+#[tauri::command]
+fn check_update(app: AppHandle) {
+    open_util_window(&app, SETTINGS, "ChatLingo 设置", "settings.html", 680.0, 720.0);
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+        if let Some(win) = app.get_webview_window(SETTINGS) {
+            let _ = win.emit("updater-check", ());
+        }
+    });
+}
+
 // ---------- 命令 ----------
 
 #[tauri::command]
@@ -842,10 +907,7 @@ fn hide_panel(app: AppHandle) {
 
 #[tauri::command]
 fn open_settings(app: AppHandle) {
-    if let Some(win) = app.get_webview_window(SETTINGS) {
-        let _ = win.show();
-        let _ = win.set_focus();
-    }
+    open_util_window(&app, SETTINGS, "ChatLingo 设置", "settings.html", 680.0, 720.0);
 }
 
 #[tauri::command]
@@ -863,11 +925,7 @@ fn history_clear(app: AppHandle) {
 
 #[tauri::command]
 fn open_history(app: AppHandle) {
-    if let Some(win) = app.get_webview_window("history") {
-        let _ = win.show();
-        let _ = win.set_focus();
-        let _ = win.emit("history-refresh", ());
-    }
+    open_util_window(&app, "history", "ChatLingo 翻译历史", "history.html", 560.0, 640.0);
 }
 
 // ---------- 术语库命令 ----------
@@ -921,11 +979,19 @@ fn glossary_export(app: AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 fn open_glossary(app: AppHandle) {
-    if let Some(win) = app.get_webview_window("glossary") {
-        let _ = win.show();
-        let _ = win.set_focus();
-        let _ = win.emit("glossary-refresh", ());
-    }
+    open_util_window(&app, "glossary", "ChatLingo 术语库", "glossary.html", 640.0, 620.0);
+}
+
+/// 兜底：浏览器打开 Release 页（更新检查/下载失败时）
+#[tauri::command]
+fn open_release_page() {
+    let url = "https://github.com/rem-sy/chatlingo/releases/latest";
+    #[cfg(windows)]
+    let _ = std::process::Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .spawn();
+    #[cfg(not(windows))]
+    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
 
 /// 系统文件夹选择器（Rust 侧调用，不走前端 ACL）
@@ -1042,6 +1108,13 @@ async fn paste_text(app: AppHandle, text: String) -> Result<(), String> {
 fn start_screenshot(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
+        // 截图选区窗口懒建；首建时等 webview 加载完再发图
+        if app.get_webview_window(SNIP).is_none() {
+            if !ensure_snip_window(&app) {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(900)).await;
+        }
         let Some(win) = app.get_webview_window(SNIP) else { return };
         // 先截屏（窗口显示前），再弹选区
         let shot = tauri::async_runtime::spawn_blocking(|| -> Result<(Vec<u8>, u32, u32), String> {
@@ -1331,11 +1404,15 @@ fn on_shortcut(app: &AppHandle, shortcut: &Shortcut) {
 
 fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let toggle_quick = MenuItem::with_id(app, "quick", "呼出翻译面板", true, None::<&str>)?;
+    let check_update_item = MenuItem::with_id(app, "check_update", "检查更新…", true, None::<&str>)?;
     let glossary_item = MenuItem::with_id(app, "glossary", "术语库…", true, None::<&str>)?;
     let history_item = MenuItem::with_id(app, "history", "翻译历史…", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "设置…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&toggle_quick, &glossary_item, &history_item, &settings_item, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[&toggle_quick, &check_update_item, &glossary_item, &history_item, &settings_item, &quit],
+    )?;
 
     let icon = app
         .default_window_icon()
@@ -1347,6 +1424,7 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quick" => show_quickbar(app),
+            "check_update" => check_update(app.clone()),
             "glossary" => open_glossary(app.clone()),
             "history" => open_history(app.clone()),
             "settings" => open_settings(app.clone()),
@@ -1375,17 +1453,17 @@ fn embedded_preset() -> Option<AppConfig> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            // 二次启动：唤起设置窗口提示已有实例在运行
-            if let Some(win) = app.get_webview_window(SETTINGS) {
-                let _ = win.show();
-                let _ = win.set_focus();
-            }
+            // 二次启动：唤起设置窗口提示已有实例在运行（懒建兜底）
+            open_util_window(app, SETTINGS, "ChatLingo 设置", "settings.html", 680.0, 720.0);
         }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -1426,6 +1504,8 @@ pub fn run() {
             register_hotkeys(&app.handle());
             eprintln!("[chatlingo] setup: spawning monitor");
             spawn_clipboard_monitor(app.handle().clone());
+            eprintln!("[chatlingo] setup: scheduling updater silent check");
+            spawn_updater_silent_check(app.handle().clone());
             eprintln!("[chatlingo] setup: done");
             Ok(())
         })
@@ -1460,6 +1540,8 @@ pub fn run() {
             history_clear,
             get_autostart,
             set_autostart,
+            check_update,
+            open_release_page,
             suspend_hotkeys,
             resume_hotkeys,
             get_data_info,
