@@ -32,3 +32,4 @@ err*.log
 quickbar-screenshot.png
 webview-data/
 pnpm-files/e* *pnpm*
+docs/archive/
