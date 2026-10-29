@@ -108,7 +108,7 @@ def build(version: str):
     env = dict(os.environ)
     env["TAURI_SIGNING_PRIVATE_KEY"] = key
     env["TAURI_SIGNING_PRIVATE_KEY_PASSWORD"] = password
-    run(["npm", "run", "tauri", "build"], cwd=REPO, env=env)
+    run("npm run tauri build", cwd=REPO, env=env)
     setup = TARGET / "bundle" / "nsis" / f"ChatLingo_{version}_x64-setup.exe"
     sig = Path(str(setup) + ".sig")
     exe = TARGET / "chatlingo.exe"

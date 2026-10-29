@@ -215,7 +215,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, markRaw } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { invoke, type AppConfig, LANG_CATALOG, langDef, SUPPORTED_LANGS } from '../shared/api'
@@ -497,6 +497,9 @@ const updateStatus = ref('')
 const updateOk = ref<boolean | null>(null)
 const updateFailed = ref(false)
 const pendingUpdate = ref<Update | null>(null)
+// Update 持有 Rust 侧资源（rid 为 JS 私有字段）：Vue 深度代理会让私有字段品牌校验
+// 失败（TypeError: Cannot read private member）——必须 markRaw 阻止响应式代理
+let pendingUpdateObj: Update | null = null
 
 async function manualCheckUpdate() {
   updateBusy.value = true
@@ -507,10 +510,12 @@ async function manualCheckUpdate() {
   try {
     const update = await updaterCheck()
     if (update) {
-      pendingUpdate.value = update
+      pendingUpdate.value = markRaw(update)
+      pendingUpdateObj = update
       updateOk.value = true
       updateStatus.value = `发现新版本 v${update.version}，可下载安装`
     } else {
+      pendingUpdateObj = null
       updateOk.value = true
       updateStatus.value = '已是最新版本'
     }
@@ -524,7 +529,7 @@ async function manualCheckUpdate() {
 }
 
 async function installUpdate() {
-  const update = pendingUpdate.value
+  const update = pendingUpdateObj
   if (!update) return
   updateBusy.value = true
   updateFailed.value = false
