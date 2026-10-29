@@ -3,6 +3,31 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
+/// 大模型渠道接口格式（三种 wire protocol；serde 默认 openai-completions，旧配置零迁移）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ApiFormat {
+    /// OpenAI Chat Completions（POST {base}/chat/completions，现有默认）
+    #[serde(rename = "openai-completions", alias = "openai")]
+    #[default]
+    OpenaiCompletions,
+    /// OpenAI Responses（POST {base}/responses）
+    #[serde(rename = "openai-responses", alias = "responses")]
+    OpenaiResponses,
+    /// Anthropic Messages（POST {base}/v1/messages，x-api-key 头）
+    #[serde(rename = "anthropic-messages", alias = "anthropic")]
+    AnthropicMessages,
+}
+
+impl ApiFormat {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ApiFormat::OpenaiCompletions => "openai-completions",
+            ApiFormat::OpenaiResponses => "openai-responses",
+            ApiFormat::AnthropicMessages => "anthropic-messages",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EngineConfig {
@@ -16,6 +41,9 @@ pub struct EngineConfig {
     pub api_key: String,
     #[serde(default = "default_model")]
     pub model: String,
+    /// 接口格式（缺省 = openai-completions，旧 config.json 零迁移）
+    #[serde(default)]
+    pub api_format: ApiFormat,
 }
 
 fn default_base_url() -> String {
@@ -27,7 +55,7 @@ fn default_model() -> String {
 
 impl Default for EngineConfig {
     fn default() -> Self {
-        EngineConfig { enabled: true, base_url: default_base_url(), api_key: String::new(), model: default_model() }
+        EngineConfig { enabled: true, base_url: default_base_url(), api_key: String::new(), model: default_model(), api_format: ApiFormat::default() }
     }
 }
 
@@ -179,12 +207,7 @@ fn default_output_target() -> String {
 impl Default for AppConfig {
     fn default() -> Self {
         AppConfig {
-            engine: EngineConfig {
-                enabled: true,
-                base_url: default_base_url(),
-                api_key: String::new(),
-                model: default_model(),
-            },
+            engine: EngineConfig::default(),
             deepl: DeeplConfig::default(),
             aliyun: AliyunConfig::default(),
             compare_mode: false,

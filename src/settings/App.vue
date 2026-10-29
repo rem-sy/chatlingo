@@ -3,15 +3,36 @@
     <h1>ChatLingo 设置</h1>
 
     <section>
-      <h2>翻译引擎（OpenAI 兼容）</h2>
+      <h2>翻译引擎（大模型渠道）</h2>
       <div class="form-row">
         <label>启用</label>
         <input type="checkbox" v-model="cfg.engine.enabled" />
         <span class="hint">关闭后不参与翻译；开启多个引擎时将同时翻译并在面板对比</span>
       </div>
       <div class="form-row">
+        <label>渠道预设</label>
+        <select v-model="selectedProvider">
+          <option v-for="p in providers" :key="p.name" :value="p.name">{{ p.name }}</option>
+        </select>
+        <span class="hint">
+          选中自动填 Base URL / 接口格式 / 推荐模型（仍可手改）{{ selectedPreset?.netNote ? `；${selectedPreset.netNote}` : '' }}
+        </span>
+      </div>
+      <div class="form-row">
         <label>Base URL</label>
         <input v-model="cfg.engine.baseUrl" type="text" placeholder="https://api.deepseek.com/v1" />
+      </div>
+      <div class="form-row">
+        <label>接口格式</label>
+        <select v-model="cfg.engine.apiFormat">
+          <option value="openai-completions">openai-completions（OpenAI Chat 兼容）</option>
+          <option value="openai-responses">openai-responses（OpenAI Responses）</option>
+          <option value="anthropic-messages">anthropic-messages（Anthropic Messages）</option>
+        </select>
+        <span class="hint">
+          {{ formatHint }}
+          <a v-if="selectedPreset?.docUrl && selectedPreset.name !== '自定义'" :href="selectedPreset.docUrl" target="_blank">渠道文档</a>
+        </span>
       </div>
       <div class="form-row">
         <label>API Key</label>
@@ -20,7 +41,7 @@
       <div class="form-row">
         <label>模型</label>
         <input v-model="cfg.engine.model" type="text" list="model-list" placeholder="deepseek-chat 或点击右侧获取" />
-        <button :disabled="loadingModels" @click="fetchModels">{{ loadingModels ? '获取中…' : '获取模型列表' }}</button>
+        <button :disabled="loadingModels || cfg.engine.apiFormat === 'anthropic-messages'" @click="fetchModels">{{ loadingModels ? '获取中…' : '获取模型列表' }}</button>
       </div>
       <div class="form-row" v-if="modelMsg">
         <label></label>
@@ -28,6 +49,7 @@
       </div>
       <datalist id="model-list">
         <option v-for="m in models" :key="m" :value="m" />
+        <option v-for="m in presetModelOptions" :key="'p-' + m" :value="m" />
       </datalist>
       <div class="form-row">
         <label></label>
@@ -215,10 +237,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, markRaw } from 'vue'
+import { ref, computed, watch, onMounted, markRaw } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { invoke, type AppConfig, LANG_CATALOG, langDef, SUPPORTED_LANGS } from '../shared/api'
+import { invoke, type AppConfig, type ApiFormat, type ProviderPreset, LANG_CATALOG, langDef, SUPPORTED_LANGS } from '../shared/api'
 import { check as updaterCheck, type Update } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { getVersion } from '@tauri-apps/api/app'
@@ -237,6 +259,38 @@ const testMsg = ref('')
 const models = ref<string[]>([])
 const loadingModels = ref(false)
 const modelMsg = ref('')
+
+// ---- 渠道预设 ----
+const providers = ref<ProviderPreset[]>([{ name: '自定义', baseUrl: '', apiFormat: 'openai-completions', models: [], docUrl: '', netNote: '' }])
+const selectedProvider = ref('自定义')
+const selectedPreset = computed(() => providers.value.find((p) => p.name === selectedProvider.value))
+const presetModelOptions = computed(() => selectedPreset.value?.models ?? [])
+const formatHint = computed(() => {
+  switch (cfg.value.engine.apiFormat) {
+    case 'openai-completions':
+      return 'POST {Base URL}/chat/completions；绝大多数渠道用这种'
+    case 'openai-responses':
+      return 'POST {Base URL}/responses；OpenAI 新版接口'
+    case 'anthropic-messages':
+      return 'POST {Base URL}/v1/messages；Anthropic 协议，不支持「获取模型列表」'
+    default:
+      return ''
+  }
+})
+
+// 选中预设 → 联动填 baseUrl + apiFormat + 首个推荐模型（之后仍可手改）
+let providerApplyEnabled = false
+watch(selectedProvider, (name) => {
+  if (!providerApplyEnabled) return
+  const p = providers.value.find((x) => x.name === name)
+  if (!p) return
+  if (p.baseUrl) {
+    cfg.value.engine.baseUrl = p.baseUrl
+    cfg.value.engine.apiFormat = p.apiFormat
+    if (p.models.length) cfg.value.engine.model = p.models[0]
+  }
+  // 「自定义」不动现有值
+})
 
 async function fetchModels() {
   loadingModels.value = true
@@ -276,7 +330,7 @@ const unionLangs = computed(() => {
 
 function defaultCfg(): AppConfig {
   return {
-    engine: { enabled: true, baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat' },
+    engine: { enabled: true, baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat', apiFormat: 'openai-completions' as ApiFormat },
     deepl: { enabled: true, apiKey: '' },
     aliyun: { enabled: true, accessKeyId: '', accessKeySecret: '' },
     quickbar: { hotkey: 'alt+t', targetLangs: ['en', 'ja'], defaultTarget: 'en', autoCopy: true, autoPaste: true },
@@ -295,7 +349,20 @@ onMounted(async () => {
     const c = await invoke<AppConfig>('get_config')
     if (!c.deepl) c.deepl = { enabled: true, apiKey: '' }
     if (!c.aliyun) c.aliyun = { enabled: true, accessKeyId: '', accessKeySecret: '' }
+    if (!c.engine) c.engine = defaultCfg().engine
+    if (!c.engine.apiFormat) c.engine.apiFormat = 'openai-completions'
     cfg.value = c
+    // 渠道预设列表（Rust 嵌入 providers.json）
+    try {
+      providers.value = await invoke<ProviderPreset[]>('list_providers')
+      const match = providers.value.find(
+        (p) => p.baseUrl && p.baseUrl === c.engine.baseUrl && p.apiFormat === c.engine.apiFormat
+      )
+      selectedProvider.value = match ? match.name : '自定义'
+    } catch (e) {
+      console.warn('providers 加载失败', e)
+    }
+    providerApplyEnabled = true
     if (!c.glossary) c.glossary = { enabled: true, maxTerms: 30 }
     const union = new Set<string>()
     if (c.engine?.enabled) SUPPORTED_LANGS.llm.forEach((x) => union.add(x))

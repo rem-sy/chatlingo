@@ -3,10 +3,17 @@ import { invoke as tauriInvoke } from '@tauri-apps/api/core'
 export const invoke = <T>(cmd: string, args?: Record<string, unknown>): Promise<T> =>
   tauriInvoke<T>(cmd, args)
 
-export interface EngineConfig {
+/** 大模型渠道接口格式（与 Rust 端 config::ApiFormat 对齐） */
+export type ApiFormat = 'openai-completions' | 'openai-responses' | 'anthropic-messages'
+
+/** 渠道预设（src-tauri/providers.json，Rust include_str! 嵌入同一份） */
+export interface ProviderPreset {
+  name: string
   baseUrl: string
-  apiKey: string
-  model: string
+  apiFormat: ApiFormat
+  models: string[]
+  docUrl: string
+  netNote: string
 }
 
 export interface EngineConfig {
@@ -14,6 +21,7 @@ export interface EngineConfig {
   baseUrl: string
   apiKey: string
   model: string
+  apiFormat: ApiFormat
 }
 
 export interface DeeplConfig {

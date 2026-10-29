@@ -2,7 +2,8 @@
   "engine": {
     "baseUrl": "",
     "apiKey": "",
-    "model": ""
+    "model": "",
+    "apiFormat": "openai-completions"
   },
   "deepl": {
     "apiKey": ""

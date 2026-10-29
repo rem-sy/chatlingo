@@ -93,6 +93,36 @@ fn default_hash(s: &str) -> u64 {
     h
 }
 
+/// 译文缓存 / in_flight 合并共用 key（apiFormat 必须纳入：换格式不得命中旧缓存）
+fn translation_cache_key(
+    text: &str,
+    target: &str,
+    direction: Direction,
+    glossary_sig: u64,
+    api_format: &str,
+) -> u64 {
+    default_hash(&format!("{text}|{target}|{direction:?}|{glossary_sig}|{api_format}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_key_isolates_api_format() {
+        let base = translation_cache_key("hello", "zh-CN", Direction::Output, 42, "openai-completions");
+        let responses = translation_cache_key("hello", "zh-CN", Direction::Output, 42, "openai-responses");
+        let anthropic = translation_cache_key("hello", "zh-CN", Direction::Output, 42, "anthropic-messages");
+        assert_ne!(base, responses);
+        assert_ne!(base, anthropic);
+        assert_ne!(responses, anthropic);
+        // 同格式同参数 → 同 key（缓存正常命中）
+        assert_eq!(base, translation_cache_key("hello", "zh-CN", Direction::Output, 42, "openai-completions"));
+        // 术语签名变化 → key 变化（陷阱 15 回归）
+        assert_ne!(base, translation_cache_key("hello", "zh-CN", Direction::Output, 43, "openai-completions"));
+    }
+}
+
 fn state(app: &AppHandle) -> tauri::State<'_, AppState> {
     app.state()
 }
@@ -352,6 +382,7 @@ fn make_stream(
                 cfg.engine.base_url.clone(),
                 cfg.engine.api_key.clone(),
                 cfg.engine.model.clone(),
+                cfg.engine.api_format,
             );
             engine.translate_stream(params)
         }
@@ -489,8 +520,8 @@ async fn run_translation(
     let glossary_sig = glossary_terms.iter().map(|(s, t)| format!("{s}>{t}")).collect::<Vec<_>>().join("|");
     let glossary_sig = default_hash(&glossary_sig);
 
-    // ---- 译文缓存 ----
-    let cache_key = default_hash(&format!("{}|{}|{:?}|{}", text, target, direction, glossary_sig));
+    // ---- 译文缓存（key 纳入 apiFormat：换格式不得命中旧缓存，陷阱 15 同款） ----
+    let cache_key = translation_cache_key(&text, &target, direction, glossary_sig, cfg.engine.api_format.as_str());
     if let Some(cached) = state(app).cache.lock().unwrap().get(cache_key).cloned() {
         eprintln!("[chatlingo] cache hit ({} chars)", cached.chars().count());
         if let Some(win) = app.get_webview_window(window) {
@@ -831,7 +862,7 @@ async fn list_models(app: AppHandle) -> Result<Value, String> {
     if cfg.engine.api_key.is_empty() {
         return Err("请先填写 API Key".into());
     }
-    let engine = OpenAiCompatEngine::new(cfg.engine.base_url, cfg.engine.api_key, cfg.engine.model);
+    let engine = OpenAiCompatEngine::new(cfg.engine.base_url, cfg.engine.api_key, cfg.engine.model, cfg.engine.api_format);
     match engine.list_model_ids().await {
         Ok(ids) => Ok(serde_json::json!({ "models": ids })),
         Err(e) => Err(e),
@@ -847,7 +878,7 @@ async fn test_engine(app: AppHandle) -> Result<Value, String> {
     } else if cfg.engine.api_key.is_empty() {
         (false, "未填写 Key".to_string())
     } else {
-        let engine = OpenAiCompatEngine::new(cfg.engine.base_url.clone(), cfg.engine.api_key.clone(), cfg.engine.model.clone());
+        let engine = OpenAiCompatEngine::new(cfg.engine.base_url.clone(), cfg.engine.api_key.clone(), cfg.engine.model.clone(), cfg.engine.api_format);
         match engine.quick_check().await {
             Ok(()) => (true, String::new()),
             Err(e) => (false, e),
@@ -1439,6 +1470,14 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
 const PRESET_JSON: &str = include_str!("../preset.json");
 
+/// 渠道预设列表（编译期嵌入 src-tauri/providers.json，前端读同一份）
+const PROVIDERS_JSON: &str = include_str!("../providers.json");
+
+#[tauri::command]
+fn list_providers() -> Result<Value, String> {
+    serde_json::from_str(PROVIDERS_JSON).map_err(|e| e.to_string())
+}
+
 fn embedded_preset() -> Option<AppConfig> {
     // 预置文件里大模型 Key 为空 → 视为空白版
     match serde_json::from_str::<AppConfig>(PRESET_JSON) {
@@ -1553,6 +1592,7 @@ pub fn run() {
             cancel_screenshot,
             request_screenshot,
             list_models,
+            list_providers,
             submit_screenshot,
             submit_input,
             translate_clipboard

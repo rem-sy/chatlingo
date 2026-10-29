@@ -1,0 +1,82 @@
+[
+  {
+    "name": "DeepSeek",
+    "baseUrl": "https://api.deepseek.com/v1",
+    "apiFormat": "openai-completions",
+    "models": ["deepseek-chat", "deepseek-reasoner"],
+    "docUrl": "https://api-docs.deepseek.com",
+    "netNote": "国内直连"
+  },
+  {
+    "name": "Anthropic Claude",
+    "baseUrl": "https://api.anthropic.com",
+    "apiFormat": "anthropic-messages",
+    "models": ["claude-sonnet-4-5", "claude-3-7-sonnet-latest", "claude-3-5-haiku-latest"],
+    "docUrl": "https://docs.anthropic.com/en/api/messages",
+    "netNote": "国内需代理"
+  },
+  {
+    "name": "OpenAI",
+    "baseUrl": "https://api.openai.com/v1",
+    "apiFormat": "openai-responses",
+    "models": ["gpt-5", "gpt-5-mini", "gpt-4.1", "gpt-4o"],
+    "docUrl": "https://platform.openai.com/docs/api-reference/responses",
+    "netNote": "国内需代理"
+  },
+  {
+    "name": "Moonshot 国内",
+    "baseUrl": "https://api.moonshot.cn/v1",
+    "apiFormat": "openai-completions",
+    "models": ["kimi-k2-turbo-preview", "kimi-k2-0905-vision-preview", "moonshot-v1-8k"],
+    "docUrl": "https://platform.moonshot.cn/docs",
+    "netNote": "国内直连"
+  },
+  {
+    "name": "智谱 GLM",
+    "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+    "apiFormat": "openai-completions",
+    "models": ["glm-4.6", "glm-4.5-air", "glm-4-flash"],
+    "docUrl": "https://open.bigmodel.cn/dev/api",
+    "netNote": "国内直连"
+  },
+  {
+    "name": "阿里云百炼 Qwen",
+    "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "apiFormat": "openai-completions",
+    "models": ["qwen-max", "qwen-plus", "qwen-turbo"],
+    "docUrl": "https://help.aliyun.com/zh/model-studio",
+    "netNote": "国内直连"
+  },
+  {
+    "name": "MiniMax",
+    "baseUrl": "https://api.minimaxi.com/anthropic",
+    "apiFormat": "anthropic-messages",
+    "models": ["MiniMax-M2"],
+    "docUrl": "https://platform.minimaxi.com/document",
+    "netNote": "国内直连"
+  },
+  {
+    "name": "OpenRouter",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "apiFormat": "openai-completions",
+    "models": ["anthropic/claude-sonnet-4.5", "openai/gpt-4o-mini", "google/gemini-2.0-flash-001"],
+    "docUrl": "https://openrouter.ai/docs",
+    "netNote": "国内需代理"
+  },
+  {
+    "name": "xAI Grok",
+    "baseUrl": "https://api.x.ai/v1",
+    "apiFormat": "openai-completions",
+    "models": ["grok-4", "grok-3"],
+    "docUrl": "https://docs.x.ai",
+    "netNote": "国内需代理"
+  },
+  {
+    "name": "自定义",
+    "baseUrl": "",
+    "apiFormat": "openai-completions",
+    "models": [],
+    "docUrl": "",
+    "netNote": ""
+  }
+]

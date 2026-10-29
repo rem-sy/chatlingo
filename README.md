@@ -37,7 +37,7 @@
 | 特性 | 说明 |
 | --- | --- |
 | **统一入口** | `Alt+T` 一个面板搞定一切：选目标语言、文本输入、截图识别，面板内任意位置回车触发 |
-| **三引擎自由组合** | 大模型（任意 OpenAI 兼容 API）/ DeepL / 阿里云机器翻译，各自独立开关，开谁用谁 |
+| **三引擎自由组合** | 大模型（OpenAI Chat / OpenAI Responses / Anthropic Messages 三种接口格式 + 9 家渠道预设）/ DeepL / 阿里云机器翻译，各自独立开关，开谁用谁 |
 | **多引擎并行对比** | 开启多个引擎时同时翻译，结果并列展示（Alt+T 面板堆叠卡片、阅读面板多栏），各带独立复制按钮 |
 | **术语库** | 维护「原文 → 固定译法」术语表，翻译时自动注入所有引擎：大模型 Prompt 强制注入、DeepL 官方 Glossary API、阿里云 Context 上下文；传统引擎译文未按术语翻译时追加橙色提示行（不强行替换）。搜索/启停/冲突标黄/JSON·CSV 导入导出，增删即生效 |
 | **语种智能联动** | 设置页语言列表 = 启用渠道支持语言的并集，随开关实时变化；运行时自动跳过不支持当前目标语言的引擎 |
@@ -94,9 +94,11 @@
 
 | 引擎 | 接入 | 免费额度 | 网络要求 |
 | --- | --- | --- | --- |
-| 大模型（OpenAI 兼容） | Base URL + API Key + 模型（支持一键获取渠道模型列表下拉选择） | 按平台 | 视渠道 |
+| 大模型（多接口格式） | Base URL + API Key + 模型；内置 9 家渠道预设一键填充（DeepSeek / Anthropic / OpenAI / Moonshot / 智谱 / 阿里云百炼 / MiniMax / OpenRouter / xAI），或自定义 | 按平台 | 视渠道 |
 | [DeepL](https://www.deepl.com/pro#developer) | API Key（免费版以 `:fx` 结尾） | 每月 50 万字符 | 国内需代理 |
 | 阿里云机器翻译 | AccessKeyId + AccessKey Secret（[控制台](https://mt.console.aliyun.com)开通） | 个人每月 100 万字符 | 国内直连 |
+
+**接口格式**：大模型渠道支持三种协议 —— `openai-completions`（绝大多数渠道）、`openai-responses`（OpenAI Responses API）、`anthropic-messages`（Anthropic Messages，走 `x-api-key` 头、system 顶层字段；MiniMax `api.minimaxi.com/anthropic` 同款）。选预设自动带出格式，也可手改；译文缓存按格式隔离。
 
 **视觉模型（截图 OCR）**：需支持图片输入（如 gemma-4、grok 系列），同样支持从渠道拉取列表选择。
 
