@@ -56,7 +56,7 @@
       <div class="form-row">
         <label>启用</label>
         <input type="checkbox" v-model="cfg.aliyun.enabled" />
-        <span class="hint">国内直连；个人每月 500 万字符免费</span>
+        <span class="hint">国内直连；个人每月 100 万字符免费</span>
       </div>
       <div class="form-row">
         <label>SecretId</label>
