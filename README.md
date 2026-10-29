@@ -4,7 +4,7 @@
 
 > 为了纯英文使用 ChatGPT 而生。
 
-[![Status](https://img.shields.io/badge/status-v0.4.0%20usable-green)](docs/03-开发计划.md) ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey) ![Stack](https://img.shields.io/badge/stack-Tauri%202%20%7C%20Rust%20%7C%20Vue%203-orange) ![License](https://img.shields.io/badge/license-MIT-blue)
+[![Status](https://img.shields.io/badge/status-v0.5.0%20usable-green)](docs/03-开发计划.md) ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey) ![Stack](https://img.shields.io/badge/stack-Tauri%202%20%7C%20Rust%20%7C%20Vue%203-orange) ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## 这是什么
 
@@ -25,7 +25,7 @@
 
 ![Alt+T 统一翻译面板](docs/screenshots/quickbar.png)
 
-> 同一句子双引擎并行：大模型严格按术语表译出「智能体 / 检索增强生成」；阿里云保留 RAG 原样时，
+> 同一句子多引擎并行：大模型严格按术语表译出「智能体 / 检索增强生成」；阿里云保留 RAG 原样时，
 > 卡片下方自动出现橙色「术语未生效」提示行（不强行改写，交给人类判断）。
 
 **术语库管理**（托盘「术语库…」打开）：
@@ -45,6 +45,7 @@
 | **格式保真** | 大模型翻译保留 Markdown 结构，代码块、行内代码、URL 原样跳过不译 |
 | **自由面板** | 拖动（位置记忆+屏幕内钳制）、边缘缩放、输入/输出分界线拖拽调比例；半透明毛玻璃，控件实底 |
 | **智能跳过 + 缓存** | 已是目标语言不翻、代码主导跳过、短文本忽略；相同内容命中本地缓存秒出、并发请求自动合并 |
+| **应用内自动更新** | 基于 GitHub Releases：启动后台静默检查 + 托盘/设置页手动检查，minisign 签名验签，下载后静默安装自动重启；网络不佳时静默失败并可一键跳转 Release 页手动下载 |
 | **剪贴板监听** | 复制外文文本自动弹译文面板（可关闭、可调阈值），零按键阅读通道 |
 | **翻译历史** | 本地 SQLite 存储，可搜索、一键复制、清空，标注实际使用引擎 |
 | **数据自主** | 数据目录自定义（一键迁移）+ 便携模式（exe 旁 `chatlingo.portable` 标记即启用） |
@@ -54,7 +55,7 @@
 
 从 [Releases](https://github.com/rem-sy/chatlingo/releases) 下载最新版：
 
-1. `ChatLingo_0.4.x_x64-setup.exe` 双击安装（装到用户目录，无需管理员权限），开始菜单启动
+1. `ChatLingo_0.5.x_x64-setup.exe` 双击安装（装到用户目录，无需管理员权限），开始菜单启动
 2. 托盘图标右键 → **设置**，启用并配置至少一个引擎（见下文），点「测试连接」
 3. <kbd>Alt</kbd>+<kbd>T</kbd> 开始使用
 
@@ -116,7 +117,7 @@
 
 ### 托盘菜单
 
-呼出翻译面板 · 术语库 · 翻译历史 · 设置 · 退出（退出请走托盘，避免托盘图标残留）
+呼出翻译面板 · 检查更新… · 术语库 · 翻译历史 · 设置 · 退出（退出请走托盘，避免托盘图标残留）
 
 ## 已知问题
 
@@ -134,7 +135,7 @@ npm run tauri build  # 出安装包（C:\chatlingo-target\release\...）
 
 **技术栈**：Tauri 2（Rust 核心，业务全部在 Rust 侧）+ Vue 3 + TypeScript + Vite。
 
-**架构**：六窗口（`quickbar` / `panel` / `settings` / `history` / `glossary` / `snip`）+ 事件驱动。Rust 侧：`capture`（快捷键/剪贴板监听）→ `detect`（脚本统计语言检测）→ `engines`（`TranslationEngine` trait：OpenAI 兼容流式 / DeepL / 阿里云，含语种支持过滤与术语注入）→ `actions`（写剪贴板/模拟粘贴）+ `store`（SQLite 历史 + 术语库）。前端零业务逻辑。
+**架构**：六窗口（`quickbar` / `panel` / `settings` / `history` / `glossary` / `snip`）+ 事件驱动。Rust 侧：`lib.rs`（快捷键/剪贴板监听、窗口管理、翻译编排）→ `detect`（脚本统计语言检测）→ `engines`（`TranslationEngine` trait：OpenAI 兼容流式 / DeepL / 阿里云 / 视觉 OCR，含语种支持过滤与术语注入）+ `store`（SQLite 历史 + 术语库）+ `config`（数据目录解析/便携模式）。前端零业务逻辑。
 
 ```
 docs/
@@ -154,8 +155,9 @@ docs/
 - [x] M3b 引擎生态·下（多引擎并行对比、截图翻译 OCR）
 - [x] M4 打磨·上（翻译历史 SQLite、开机自启、数据目录/便携模式、引擎开关式重构、语种联动、UI 重铸）
 - [x] M5 术语库（Prompt 注入 + DeepL Glossary API + 阿里云 Context + 译后校验 + 管理窗口）
-- [ ] M6 打磨·下（自动更新、macOS/Linux 适配）
-- [ ] 远期：按应用记忆方向偏好、双语对话侧栏
+- [x] M6a 自动更新（GitHub Releases 更新源 + minisign 验签 + 静默安装）+ M6b 性能（懒建窗口，冷启动 <1s）
+- [ ] M6c v1.0 发布工程（仓库转公开 + Release）
+- [ ] 远期：macOS/Linux 适配、按应用记忆方向偏好、双语对话侧栏
 
 ## License
 
