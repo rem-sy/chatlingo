@@ -159,6 +159,10 @@ docs/
 - [ ] M6c v1.0 发布工程（仓库转公开 + Release）
 - [ ] 远期：macOS/Linux 适配、按应用记忆方向偏好、双语对话侧栏
 
+## 关于本项目
+
+本项目为 **纯 AI 开发**的实验性作品：从设计、编码、调试、发版到文档的全部工作由 AI 完成，技术栈为 **GLM-5.3**（模型，负责推理与实现）+ **[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)**（AI 编码代理框架，负责工具调用与会话驱动），人类只负责提需求、做裁决与验收。
+
 ## License
 
 MIT © [rem-sy](https://github.com/rem-sy)
