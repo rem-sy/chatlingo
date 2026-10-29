@@ -163,6 +163,17 @@ docs/
 
 本项目为 **纯 AI 开发**的实验性作品：从设计、编码、调试、发版到文档的全部工作由 AI 完成，技术栈为 **GLM-5.3**（模型，负责推理与实现）+ **[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)**（AI 编码代理框架，负责工具调用与会话驱动），人类只负责提需求、做裁决与验收。
 
+## 致谢与参考项目
+
+立项时调研了以下开源前辈，**仅借鉴产品思路与交互范式，未复制任何代码**（它们多为 GPL/AGPL 许可证，与本项目 MIT 不兼容，详见 [开源参考调研](docs/00-开源参考调研.md)）：
+
+- [pot-desktop](https://github.com/pot-app/pot-desktop) —— Tauri 翻译工具的工程实践（多窗口/全局快捷键/置顶弹窗）
+- [CopyTranslator](https://github.com/CopyTranslator/CopyTranslator) —— 「复制即翻译」范式，剪贴板监听模式的直接原型
+- [nextai-translator](https://github.com/nextai-translator/nextai-translator)（原 openai-translator）—— LLM 翻译的 Prompt 设计与流式输出体验
+- [Easydict](https://github.com/tisfeng/Easydict) —— 多引擎并行请求 + 结果对比视图
+
+ChatLingo = CopyTranslator 的剪贴板范式 + pot 的 Tauri 工程实践 + nextai 的 LLM 翻译质量，组合出「AI 对话双向翻译」这个新场景。
+
 ## License
 
 MIT © [rem-sy](https://github.com/rem-sy)
