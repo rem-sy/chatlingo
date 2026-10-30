@@ -34,3 +34,4 @@ webview-data/
 pnpm-files/e* *pnpm*
 docs/archive/
 src-tauri/examples/
+.github-monitor/
