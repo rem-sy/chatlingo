@@ -1,71 +1,9 @@
-.history {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  padding: 14px 16px;
-}
-body { overflow: hidden; }
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-.toolbar input { flex: 1; }
-.count { color: var(--text-dim); font-size: 12px; white-space: nowrap; }
-
-.list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
-.empty { color: var(--text-dim); text-align: center; padding: 48px 0; font-size: 13px; }
-
-.entry {
-  background: var(--bg-soft);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 9px 12px;
-  transition: border-color 0.12s;
-}
-.entry:hover { border-color: #3f404b; }
-.entry-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-.dir {
-  font-size: 11px;
-  border-radius: 999px;
-  padding: 1px 8px;
-  white-space: nowrap;
-}
-.dir.input { color: var(--accent); background: var(--accent-soft); }
-.dir.output { color: var(--ok); background: rgba(69, 208, 151, 0.14); }
-.engine { font-size: 11px; color: var(--text-faint); }
-.time {
-  font-size: 11px;
-  color: var(--text-faint);
-  font-variant-numeric: tabular-nums;
-}
-.spacer { flex: 1; }
-button.mini { padding: 1px 8px; font-size: 12px; height: 22px; }
-
-.source {
-  font-size: 12.5px;
-  color: var(--text-dim);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 60px;
-  overflow-y: auto;
-  user-select: text;
-  line-height: 1.55;
-}
-.target {
-  font-size: 13.5px;
-  margin-top: 5px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 120px;
-  overflow-y: auto;
-  user-select: text;
-  line-height: 1.6;
-}
+.entry-head, .entry-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; }
+.entry-head { justify-content: space-between; }
+.entry-meta { color: var(--text-faint); font-size: 12px; }
+.entry-text { display: grid; gap: 6px; margin: 7px 0 0; }
+.entry-text > div { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 7px; padding: 6px 8px; border-radius: 7px; }
+.entry-text > div:first-child { color: var(--text-dim); }
+.entry-text > div:last-child { background: var(--bg-soft); }
+.entry-text dt { align-self: start; padding-top: 1px; color: var(--text-faint); font-size: 12px; font-weight: 650; }
+.entry-text dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }

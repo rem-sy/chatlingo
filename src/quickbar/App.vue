@@ -1,61 +1,81 @@
 <template>
-  <div class="quickbar" :class="{ translating }" data-tauri-drag-region>
-    <div class="dragbar" data-tauri-drag-region title="按住拖动">⠿</div>
+  <main class="quickbar">
+    <header class="quickbar-head" data-tauri-drag-region>
+      <h1 data-tauri-drag-region>快速翻译</h1>
+      <div class="shortcuts" data-tauri-drag-region>
+        <kbd data-tauri-drag-region>Shift+Enter</kbd><span data-tauri-drag-region>换行</span>
+        <kbd data-tauri-drag-region>Esc</kbd><span data-tauri-drag-region>收起</span>
+      </div>
+      <button class="quiet close" aria-label="收起翻译面板" title="收起（Esc）" @click="hide">×</button>
+    </header>
     <div class="input-zone" :style="{ height: inputH + 'px' }">
       <textarea
         ref="inputEl"
         v-model="source"
-        :placeholder="placeholder"
+        aria-label="原文"
+        placeholder="输入或粘贴要翻译的文字"
       ></textarea>
     </div>
-    <div class="splitter" title="拖动调整输入区高度" @mousedown="startSplitDrag">
+    <div
+      class="splitter"
+      role="separator"
+      tabindex="0"
+      aria-label="调整原文区域高度"
+      aria-orientation="horizontal"
+      :aria-valuemin="56"
+      :aria-valuemax="maxInputHeight"
+      :aria-valuenow="Math.min(maxInputHeight, inputH)"
+      title="拖动或使用方向键调整原文区域高度"
+      @mousedown="startSplitDrag"
+      @keydown.up.prevent="resizeInput(-16)"
+      @keydown.down.prevent="resizeInput(16)"
+    >
       <span></span>
     </div>
-    <div v-if="note" class="note">{{ note }}</div>
-    <div v-if="translated || streaming || error || multiOrder.length" class="divider"></div>
-    <div v-if="error" class="error">{{ error }}</div>
-    <div v-else-if="multiOrder.length" class="output-zone">
-      <div v-for="eng in multiOrder" :key="eng" class="multi-block">
-        <div class="multi-head">
-          <span class="multi-tag">{{ engName(eng) }}</span>
-          <button class="multi-copy" @click="copy(multiTexts[eng] || '')">复制</button>
-        </div>
-        <div class="output-text">{{ multiTexts[eng] }}</div>
-        <div v-if="glossaryWarns[eng]" class="glossary-warn">{{ glossaryWarns[eng] }}</div>
-      </div>
+    <div class="output-zone" aria-label="译文">
+      <div v-if="note" class="feedback warning" role="status">{{ note }}</div>
+      <div v-if="error" class="feedback error" role="alert">{{ error }}</div>
+      <article v-for="eng in multiOrder" :key="eng" class="result">
+        <header class="result-head">
+          <span class="chip">{{ engineName(eng) }}</span>
+          <button class="quiet" :disabled="!multiTexts[eng]" :aria-label="'复制' + engineName(eng) + '译文'" @click="copy(multiTexts[eng], eng)">{{ copied === eng ? '已复制' : '复制' }}</button>
+        </header>
+        <div v-if="multiTexts[eng]" class="output-text" dir="auto">{{ multiTexts[eng] }}</div>
+        <div v-else class="result-placeholder">{{ translating ? '等待译文…' : '未返回译文' }}</div>
+        <div v-if="glossaryWarns[eng]" class="feedback warning">{{ glossaryWarns[eng] }}</div>
+      </article>
+      <article v-if="!multiOrder.length && (translated || translating)" class="result">
+        <header class="result-head">
+          <span class="chip">译文 · {{ langDef(resultTarget).name }}</span>
+          <div v-if="translated" class="result-actions">
+            <button class="quiet" @click="copy(translated, 'single')">{{ copied === 'single' ? '已复制' : '复制' }}</button>
+            <button v-if="!translating && resultTarget !== 'zh-CN'" class="quiet" @click="paste">粘贴回填</button>
+          </div>
+        </header>
+        <div v-if="translated" class="output-text" :class="{ streaming }" dir="auto">{{ translated }}</div>
+        <div v-else class="result-placeholder">等待译文…</div>
+        <div v-if="glossaryWarns['']" class="feedback warning">{{ glossaryWarns[''] }}</div>
+      </article>
     </div>
-    <div v-else-if="translated || streaming" class="output-zone">
-      <div class="output-text" :class="{ streaming }">{{ display }}</div>
-      <div v-if="glossaryWarns['']" class="glossary-warn">{{ glossaryWarns[''] }}</div>
-    </div>
-    <div class="toolbar" data-tauri-drag-region>
-      <div class="langs">
-        <button
-          v-for="lang in langs"
-          :key="lang"
-          class="lang-pill"
-          :class="{ active: target === lang }"
-          @click="target = lang"
-        >
-          {{ label(lang) }}
-        </button>
-      </div>
-      <button class="snap-btn" title="框选屏幕区域，识别文字到输入框" @click="snap">截图</button>
-      <div class="status" data-tauri-drag-region>{{ statusText }}</div>
-      <div class="actions">
-        <button class="primary" :disabled="translating || !source.trim()" @click="submit">{{ translating ? '翻译中…' : '翻译' }}</button>
-        <button v-if="translated && !translating" @click="copy">复制</button>
-        <button v-if="translated && !translating && target !== 'zh-CN'" class="primary" @click="paste">粘贴回填</button>
-      </div>
-    </div>
-  </div>
+    <footer class="toolbar" data-tauri-drag-region>
+      <label class="language-label" for="target-language">译为</label>
+      <select id="target-language" v-model="target">
+        <option v-for="lang in langs" :key="lang" :value="lang">{{ langDef(lang).name }}</option>
+      </select>
+      <button class="quiet" :disabled="translating" title="框选屏幕区域，识别文字到输入框" @click="snap">截图</button>
+      <span class="status" role="status" data-tauri-drag-region>{{ statusText }}</span>
+      <button class="primary submit" :disabled="translating || !source.trim()" @click="submit">
+        {{ translating ? '翻译中…' : '翻译' }} <kbd v-if="!translating" aria-hidden="true">↵</kbd>
+      </button>
+    </footer>
+  </main>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { invoke, type AppConfig, langLabel } from '../shared/api'
+import { invoke, type AppConfig, engineName, langDef } from '../shared/api'
 import '../shared/base.css'
 import './quickbar.css'
 
@@ -67,29 +87,18 @@ const translating = ref(false)
 const error = ref('')
 const target = ref('en')
 const langs = ref<string[]>(['en', 'ja', 'zh-CN'])
-const cfg = ref<AppConfig | null>(null)
+const resultTarget = ref('en')
 const note = ref('')
 const multiOrder = ref<string[]>([])
 const multiTexts = ref<Record<string, string>>({})
 const glossaryWarns = ref<Record<string, string>>({})
 let reqId = 0
-
-const ENGINE_NAMES: Record<string, string> = { llm: '大模型', deepl: 'DeepL', aliyun: '阿里云' }
-const engName = (id: string) => ENGINE_NAMES[id] ?? id
-
-const label = (l: string) => langLabel(l)
-const targetLabel = computed(() => label(target.value))
-const placeholder = computed(() =>
-  target.value === 'zh-CN'
-    ? '输入、粘贴或截图识别文字，回车翻译为中文…'
-    : `输入、粘贴或截图识别文字，回车翻译为 ${targetLabel.value}…`
-)
-const display = computed(() => translated.value || '')
+const copied = ref('')
+let copyTimer: number | undefined
 const statusText = computed(() => {
-  if (note.value) return note.value
-  if (translating.value) return `翻译中… → ${targetLabel.value}`
-  if (error.value) return '失败'
-  if (translated.value) return `已译为 ${targetLabel.value}${autoDone.value ? ' · 已回填' : ''}`
+  if (autoDone.value) return '已回填'
+  if (translating.value) return ''
+  if (translated.value || Object.values(multiTexts.value).some(Boolean)) return '翻译完成'
   return ''
 })
 const autoDone = ref(false)
@@ -104,13 +113,6 @@ onMounted(async () => {
       invoke('save_quickbar_pos', { x: payload.x, y: payload.y })
     }, 500)
   })
-  cfg.value = await invoke<AppConfig>('get_config')
-  // 统一方向：输入方向目标语言 + 输出方向（中文），去重
-  const list = [...cfg.value.quickbar.targetLangs]
-  if (!list.includes(cfg.value.outputTarget)) list.push(cfg.value.outputTarget)
-  langs.value = list
-  target.value = cfg.value.quickbar.defaultTarget
-
   await listen<{ id: number; text: string; engine?: string }>('quickbar-chunk', (e) => {
     if (e.payload.id !== reqId) return
     streaming.value = true
@@ -126,6 +128,11 @@ onMounted(async () => {
     multiTexts.value = {}
   })
   await listen<{ id: number; ok: boolean; error?: string; pasted?: boolean }>('quickbar-done', (e) => {
+    if (e.payload.id === 0 && !e.payload.ok) {
+      note.value = ''
+      error.value = e.payload.error || '截图识别失败'
+      return
+    }
     if (e.payload.id !== reqId) return
     translating.value = false
     streaming.value = false
@@ -142,17 +149,12 @@ onMounted(async () => {
     glossaryWarns.value[key] = e.payload.text
   })
   await listen('quickbar-reset', () => {
+    reqId += 1
     source.value = ''
-    translated.value = ''
-    error.value = ''
+    resetResult()
     note.value = ''
-    multiOrder.value = []
-    multiTexts.value = {}
-    glossaryWarns.value = {}
-    translating.value = false
-    streaming.value = false
-    autoDone.value = false
     inputEl.value?.focus()
+    void refreshLanguages()
   })
   await listen<{ note: string }>('engine-note', (e) => {
     note.value = e.payload.note
@@ -163,23 +165,51 @@ onMounted(async () => {
   })
   await listen<{ text: string }>('quickbar-ocr', (e) => {
     note.value = ''
-    source.value = e.payload.text
-    translated.value = ''
-    error.value = ''
+    if (e.payload.text) {
+      source.value = e.payload.text
+      resetResult()
+    }
     inputEl.value?.focus()
   })
+  await refreshLanguages()
 })
 
-// ---------- 分界线拖拽：调整输入/输出比例 ----------
-const inputH = ref(Number(localStorage.getItem('qb-input-h')) || 110)
+let configuredTarget = ''
+async function refreshLanguages() {
+  try {
+    const config = await invoke<AppConfig>('get_config')
+    const list = [...new Set([...config.quickbar.targetLangs, config.outputTarget])]
+    if (!list.length) return
+    langs.value = list
+    if (configuredTarget !== config.quickbar.defaultTarget || !list.includes(target.value)) {
+      target.value = list.includes(config.quickbar.defaultTarget) ? config.quickbar.defaultTarget : list[0]
+    }
+    configuredTarget = config.quickbar.defaultTarget
+  } catch (e) {
+    error.value = `无法读取语言设置：${e}`
+  }
+}
+
+const inputH = ref(Math.max(56, Number(localStorage.getItem('qb-input-h')) || 92))
+const maxInputHeight = ref(56)
+function updateInputLimit() {
+  maxInputHeight.value = Math.max(56, window.innerHeight - 132)
+}
+updateInputLimit()
+window.addEventListener('resize', updateInputLimit)
+
+function resizeInput(delta: number) {
+  inputH.value = Math.min(Math.max(Math.min(inputH.value, maxInputHeight.value) + delta, 56), maxInputHeight.value)
+  localStorage.setItem('qb-input-h', String(inputH.value))
+}
 
 function startSplitDrag(e: MouseEvent) {
+  if (e.button !== 0) return
   e.preventDefault()
   const startY = e.clientY
-  const startH = inputH.value
-  const maxH = window.innerHeight - 170
+  const startH = Math.min(inputH.value, maxInputHeight.value)
   const onMove = (ev: MouseEvent) => {
-    inputH.value = Math.min(Math.max(startH + (ev.clientY - startY), 56), Math.max(maxH, 56))
+    inputH.value = Math.min(Math.max(startH + ev.clientY - startY, 56), maxInputHeight.value)
   }
   const onUp = () => {
     window.removeEventListener('mousemove', onMove)
@@ -194,7 +224,7 @@ function startSplitDrag(e: MouseEvent) {
 if (typeof window !== 'undefined') {
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      invoke('hide_quickbar')
+      hide()
       return
     }
     if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return
@@ -205,10 +235,8 @@ if (typeof window !== 'undefined') {
   })
 }
 
-async function submit() {
-  const text = source.value.trim()
-  if (!text || translating.value) return
-  translating.value = true
+function resetResult() {
+  translating.value = false
   streaming.value = false
   translated.value = ''
   error.value = ''
@@ -216,21 +244,59 @@ async function submit() {
   multiOrder.value = []
   multiTexts.value = {}
   glossaryWarns.value = {}
-  reqId += 1
-  await invoke('submit_input', { text, target: target.value, id: reqId })
+  copied.value = ''
+  clearTimeout(copyTimer)
+}
+
+async function submit() {
+  const text = source.value.trim()
+  if (!text || translating.value) return
+  resetResult()
+  note.value = ''
+  translating.value = true
+  resultTarget.value = target.value
+  const id = ++reqId
+  try {
+    await invoke('submit_input', { text, target: resultTarget.value, id })
+  } catch (e) {
+    if (id !== reqId) return
+    translating.value = false
+    streaming.value = false
+    error.value = `翻译失败：${e}`
+  }
+}
+
+function hide() {
+  void invoke('hide_quickbar')
 }
 
 async function snap() {
-  await invoke('request_screenshot', {})
+  error.value = ''
+  try {
+    await invoke('request_screenshot', {})
+  } catch (e) {
+    error.value = `截图失败：${e}`
+  }
 }
 
-async function copy() {
-  if (!translated.value) return
-  await invoke('copy_text', { text: translated.value })
+async function copy(text: string, key: string) {
+  if (!text) return
+  try {
+    await invoke('copy_text', { text })
+    copied.value = key
+    clearTimeout(copyTimer)
+    copyTimer = window.setTimeout(() => { copied.value = '' }, 1600)
+  } catch (e) {
+    error.value = `复制失败：${e}`
+  }
 }
 
 async function paste() {
   if (!translated.value) return
-  await invoke('paste_text', { text: translated.value })
+  try {
+    await invoke('paste_text', { text: translated.value })
+  } catch (e) {
+    error.value = `回填失败：${e}`
+  }
 }
 </script>

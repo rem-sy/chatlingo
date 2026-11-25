@@ -4,7 +4,7 @@
 
 > 为了纯英文使用 ChatGPT 而生。
 
-[![Status](https://img.shields.io/badge/status-v0.5.0%20usable-green)](docs/03-开发计划.md) ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey) ![Stack](https://img.shields.io/badge/stack-Tauri%202%20%7C%20Rust%20%7C%20Vue%203-orange) ![License](https://img.shields.io/badge/license-MIT-blue)
+[![Release](https://img.shields.io/github/v/release/rem-sy/chatlingo)](https://github.com/rem-sy/chatlingo/releases/latest) ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey) ![Stack](https://img.shields.io/badge/stack-Tauri%202%20%7C%20Rust%20%7C%20Vue%203-orange) ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## 这是什么
 
@@ -17,18 +17,17 @@
 
 ## 界面一览
 
-**演示**（Alt+T → 粘贴 → 三引擎并行翻译 → 术语校验）：
+**操作演示（早期版本）**
 
 ![Demo GIF](docs/screenshots/demo.gif)
 
-**Alt+T 统一面板**（多引擎并行 + 术语强制 + 译后校验提示）：
+**Alt+T 快速翻译**（多引擎结果与译后校验提示）
 
 ![Alt+T 统一翻译面板](docs/screenshots/quickbar.png)
 
-> 同一句子多引擎并行：大模型严格按术语表译出「智能体 / 检索增强生成」；阿里云保留 RAG 原样时，
-> 卡片下方自动出现橙色「术语未生效」提示行（不强行改写，交给人类判断）。
+> 同一句子可由多个引擎并行翻译。示例中，大模型应用了 RAG 的固定译法，DeepL 保留了缩写并显示术语提示。
 
-**术语库管理**（托盘「术语库…」打开）：
+**术语库管理**（通过托盘的「术语库…」打开）
 
 ![术语库管理窗口](docs/screenshots/glossary.png)
 
@@ -55,7 +54,7 @@
 
 从 [Releases](https://github.com/rem-sy/chatlingo/releases) 下载最新版：
 
-1. `ChatLingo_0.5.x_x64-setup.exe` 双击安装（装到用户目录，无需管理员权限），开始菜单启动
+1. 双击下载的 `ChatLingo_<版本>_x64-setup.exe` 安装（装到用户目录，无需管理员权限），从开始菜单启动
 2. 托盘图标右键 → **设置**，启用并配置至少一个引擎（见下文），点「测试连接」
 3. <kbd>Alt</kbd>+<kbd>T</kbd> 开始使用
 
@@ -69,7 +68,7 @@
 
 按 <kbd>Alt</kbd>+<kbd>T</kbd> 在光标处呼出悬浮翻译面板，一个入口搞定所有翻译：
 
-- **选目标语言**：语言胶囊点击切换（可用语言在设置页勾选配置）
+- **选目标语言**：使用底部「译为」下拉菜单（可用语言在设置的「语言与快捷键」配置）
 - **文本输入**：打字或粘贴，<kbd>Enter</kbd> 翻译（焦点在面板内任意位置均可），译文流式显示；目标为外语时可选「粘贴回填」（自动模拟 <kbd>Ctrl</kbd>+<kbd>V</kbd> 贴回原输入框）
 - **截图输入**：点「截图」→ 框选屏幕任意区域 → 识别出的文字**回填输入框，可先校对再翻译**
 - **多引擎结果**：开启多个引擎时，各引擎译文以带标签的卡片堆叠展示，各自带复制按钮

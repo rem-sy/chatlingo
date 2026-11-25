@@ -168,6 +168,7 @@ fn create_windows(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         WebviewWindowBuilder::new(app, PANEL, WebviewUrl::App("panel.html".into()))
             .title("ChatLingo Panel")
             .inner_size(440.0, 480.0)
+            .min_inner_size(300.0, 220.0)
             .decorations(false)
             .always_on_top(true)
             .skip_taskbar(true)
@@ -200,6 +201,7 @@ fn open_util_window(app: &AppHandle, label: &str, title: &str, html: &str, w: f6
     match WebviewWindowBuilder::new(app, label, WebviewUrl::App(html.into()))
         .title(title)
         .inner_size(w, h)
+        .min_inner_size(350.0, 280.0)
         .resizable(true)
         .visible(true)
         .shadow(true)
@@ -409,7 +411,7 @@ async fn run_single_stream(
     target: String,
     direction: Direction,
     cfg: &AppConfig,
-    tag_chunks: bool,
+    request_id: Option<u64>,
     glossary: Vec<(String, String)>,
     deepl_glossary_id: Option<String>,
     source_lang: Option<String>,
@@ -424,16 +426,10 @@ async fn run_single_stream(
         match item {
             Ok(chunk) => {
                 full.push_str(&chunk);
-                if window == QUICKBAR {
-                    let id = ACTIVE_REQ.load(std::sync::atomic::Ordering::SeqCst);
+                if let Some(id) = request_id {
                     let _ = win.emit(
                         "quickbar-chunk",
                         serde_json::json!({ "id": id, "text": chunk }),
-                    );
-                } else if tag_chunks {
-                    let _ = win.emit(
-                        "panel-chunk",
-                        serde_json::json!({ "engine": kind.id(), "text": chunk }),
                     );
                 } else {
                     let _ = win.emit("panel-chunk", serde_json::json!({ "text": chunk }));
@@ -485,6 +481,28 @@ fn check_and_warn_glossary(
     let _ = win.emit("glossary-warn", payload);
 }
 
+fn replay_translation(
+    app: &AppHandle,
+    window: &str,
+    request_id: Option<u64>,
+    original: &str,
+    target: &str,
+    translated: &str,
+) {
+    let Some(win) = app.get_webview_window(window) else { return };
+    if let Some(id) = request_id {
+        let _ = win.emit("quickbar-chunk", serde_json::json!({ "id": id, "text": translated }));
+    } else {
+        let _ = win.emit(
+            "panel-start",
+            serde_json::json!({ "original": original, "outputTarget": target, "compare": false }),
+        );
+        show_panel_bottom_right(app);
+        let _ = win.emit("panel-chunk", serde_json::json!({ "text": translated }));
+        let _ = win.emit("panel-done", serde_json::json!({ "ok": true }));
+    }
+}
+
 /// 主入口：按启用的引擎执行翻译。
 /// 单引擎 → 该引擎流式直出；多引擎 → 全部并行翻译，全部成功(或部分成功)时并列展示。
 async fn run_translation(
@@ -493,6 +511,7 @@ async fn run_translation(
     text: String,
     target: String,
     direction: Direction,
+    request_id: Option<u64>,
 ) -> Result<String, String> {
     let cfg = state(app).config.lock().unwrap().clone();
     let engines_on = enabled_engines(&cfg);
@@ -524,14 +543,7 @@ async fn run_translation(
     let cache_key = translation_cache_key(&text, &target, direction, glossary_sig, cfg.engine.api_format.as_str());
     if let Some(cached) = state(app).cache.lock().unwrap().get(cache_key).cloned() {
         eprintln!("[chatlingo] cache hit ({} chars)", cached.chars().count());
-        if let Some(win) = app.get_webview_window(window) {
-            if window == QUICKBAR {
-                let id = ACTIVE_REQ.load(std::sync::atomic::Ordering::SeqCst);
-                let _ = win.emit("quickbar-chunk", serde_json::json!({ "id": id, "text": cached }));
-            } else {
-                let _ = win.emit("panel-chunk", serde_json::json!({ "text": cached }));
-            }
-        }
+        replay_translation(app, window, request_id, &text, &target, &cached);
         return Ok(cached);
     }
     // ---- 请求合并：同内容翻译进行中 → 等它完成后走缓存 ----
@@ -550,9 +562,7 @@ async fn run_translation(
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             let cached = state(app).cache.lock().unwrap().get(cache_key).cloned();
             if let Some(cached) = cached {
-                if let Some(win) = app.get_webview_window(window) {
-                    let _ = win.emit("panel-chunk", serde_json::json!({ "text": cached }));
-                }
+                replay_translation(app, window, request_id, &text, &target, &cached);
                 return Ok(cached);
             }
             let still = state(app).in_flight.lock().unwrap().contains(&cache_key);
@@ -587,12 +597,13 @@ async fn run_translation(
             show_panel_bottom_right(app);
         }
         let r = run_single_stream(
-            app, window, kind, text.clone(), target.clone(), direction, &cfg, false,
+            app, window, kind, text.clone(), target.clone(), direction, &cfg, request_id,
             glossary_terms.clone(),
             if kind == EngineKind::Deepl { deepl_gid.clone() } else { None },
             Some(deepl_src.to_string()),
         )
-        .await;        if window == PANEL {
+        .await;
+        if window == PANEL {
             if let Some(p) = app.get_webview_window(PANEL) {
                 let _ = p.emit(
                     "panel-done",
@@ -631,8 +642,7 @@ async fn run_translation(
                 );
             }
             show_panel_bottom_right(app);
-        } else if let Some(b) = &win {
-            let id = ACTIVE_REQ.load(std::sync::atomic::Ordering::SeqCst);
+        } else if let (Some(b), Some(id)) = (&win, request_id) {
             let _ = b.emit("quickbar-multi-start", serde_json::json!({ "id": id, "engines": kinds }));
         }
         let mut tasks = Vec::new();
@@ -641,8 +651,6 @@ async fn run_translation(
             let text2 = text.clone();
             let target2 = target.clone();
             let win2 = win.clone();
-            let is_quickbar = window == QUICKBAR;
-            let id = ACTIVE_REQ.load(std::sync::atomic::Ordering::SeqCst);
             let glossary2 = glossary_terms.clone();
             let gid2 = if kind == EngineKind::Deepl { deepl_gid.clone() } else { None };
             let src2 = Some(deepl_src.to_string());
@@ -655,7 +663,7 @@ async fn run_translation(
                         Ok(chunk) => {
                             full.push_str(&chunk);
                             if let Some(w) = &win2 {
-                                if is_quickbar {
+                                if let Some(id) = request_id {
                                     let _ = w.emit(
                                         "quickbar-chunk",
                                         serde_json::json!({ "id": id, "engine": kind.id(), "text": chunk }),
@@ -827,7 +835,7 @@ fn spawn_updater_silent_check(app: AppHandle) {
 /// （窗口可能刚懒建，事件延迟发送等前端 listener 就绪）
 #[tauri::command]
 fn check_update(app: AppHandle) {
-    open_util_window(&app, SETTINGS, "ChatLingo 设置", "settings.html", 680.0, 720.0);
+    open_settings(app.clone());
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(800)).await;
         if let Some(win) = app.get_webview_window(SETTINGS) {
@@ -938,7 +946,7 @@ fn hide_panel(app: AppHandle) {
 
 #[tauri::command]
 fn open_settings(app: AppHandle) {
-    open_util_window(&app, SETTINGS, "ChatLingo 设置", "settings.html", 680.0, 720.0);
+    open_util_window(&app, SETTINGS, "ChatLingo 设置", "settings.html", 760.0, 720.0);
 }
 
 #[tauri::command]
@@ -1142,6 +1150,7 @@ fn start_screenshot(app: &AppHandle) {
         // 截图选区窗口懒建；首建时等 webview 加载完再发图
         if app.get_webview_window(SNIP).is_none() {
             if !ensure_snip_window(&app) {
+                show_screenshot_error(&app, "无法打开截图窗口");
                 return;
             }
             tokio::time::sleep(std::time::Duration::from_millis(900)).await;
@@ -1182,10 +1191,7 @@ fn start_screenshot(app: &AppHandle) {
             }
             Err(e) => {
                 eprintln!("[chatlingo] screenshot failed: {e}");
-                if let Some(b) = app.get_webview_window(QUICKBAR) {
-                    let _ = b.emit("quickbar-done", serde_json::json!({ "id": 0, "ok": false, "error": format!("截图失败：{e}") }));
-                    let _ = b.show();
-                }
+                show_screenshot_error(&app, &format!("截图失败：{e}"));
             }
         }
     });
@@ -1195,6 +1201,20 @@ fn start_screenshot(app: &AppHandle) {
 fn cancel_screenshot(app: AppHandle) {
     if let Some(win) = app.get_webview_window(SNIP) {
         let _ = win.hide();
+    }
+    if let Some(bar) = app.get_webview_window(QUICKBAR) {
+        let _ = bar.set_focus();
+    }
+}
+
+fn show_screenshot_error(app: &AppHandle, error: &str) {
+    if let Some(bar) = app.get_webview_window(QUICKBAR) {
+        let _ = bar.emit(
+            "quickbar-done",
+            serde_json::json!({ "id": 0, "ok": false, "error": error }),
+        );
+        let _ = bar.show();
+        let _ = bar.set_focus();
     }
 }
 
@@ -1211,13 +1231,17 @@ async fn submit_screenshot(app: AppHandle, image: String) -> Result<(), String> 
     cancel_screenshot(app.clone());
     let cfg = state(&app).config.lock().unwrap().clone();
     if cfg.engine.api_key.is_empty() {
-        return Err("未配置 API Key".into());
+        let error = "截图识别需要先在设置中配置大模型 API Key";
+        show_screenshot_error(&app, error);
+        return Err(error.into());
     }
     // dataURL → PNG bytes（前端 canvas 裁剪后重新编码）
     let b64 = image.trim_start_matches("data:image/png;base64,").to_string();
-    let png = base64::engine::general_purpose::STANDARD
-        .decode(&b64)
-        .map_err(|e| format!("图片解码失败: {e}"))?;
+    let png = base64::engine::general_purpose::STANDARD.decode(&b64).map_err(|e| {
+        let error = format!("图片解码失败：{e}");
+        show_screenshot_error(&app, &error);
+        error
+    })?;
 
     eprintln!("[chatlingo] snip: extracting text via vision model ({}KB)", png.len() / 1024);
 
@@ -1238,10 +1262,7 @@ async fn submit_screenshot(app: AppHandle, image: String) -> Result<(), String> 
         }
         Err(e) => {
             eprintln!("[chatlingo] snip extract failed: {e}");
-            if let Some(b) = &bar {
-                let _ = b.emit("quickbar-ocr", serde_json::json!({ "text": "" }));
-                let _ = b.emit("quickbar-done", serde_json::json!({ "id": 0, "ok": false, "error": format!("截图识别失败：{e}") }));
-            }
+            show_screenshot_error(&app, &format!("截图识别失败：{e}"));
             Err(e)
         }
     }
@@ -1251,7 +1272,10 @@ async fn submit_screenshot(app: AppHandle, image: String) -> Result<(), String> 
 #[tauri::command]
 async fn submit_input(app: AppHandle, text: String, target: String, id: u64) -> Result<(), ()> {
     ACTIVE_REQ.store(id, std::sync::atomic::Ordering::SeqCst);
-    let result = run_translation(&app, QUICKBAR, text, target, Direction::Input).await;
+    let result = run_translation(&app, QUICKBAR, text, target, Direction::Input, Some(id)).await;
+    if ACTIVE_REQ.load(std::sync::atomic::Ordering::SeqCst) != id {
+        return Ok(());
+    }
     let win = app.get_webview_window(QUICKBAR);
     let cfg = state(&app).config.lock().unwrap().clone();
     match result {
@@ -1320,7 +1344,7 @@ pub async fn translate_output(app: AppHandle, text: String, cfg: AppConfig) {
         return;
     }
     // panel-start / compare / panel-done 均由 run_translation 统一负责
-    let _ = run_translation(&app, PANEL, trimmed, cfg.output_target.clone(), Direction::Output).await;
+    let _ = run_translation(&app, PANEL, trimmed, cfg.output_target.clone(), Direction::Output, None).await;
 }
 
 // ---------- 剪贴板与粘贴 ----------
@@ -1493,7 +1517,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // 二次启动：唤起设置窗口提示已有实例在运行（懒建兜底）
-            open_util_window(app, SETTINGS, "ChatLingo 设置", "settings.html", 680.0, 720.0);
+            open_settings(app.clone());
         }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,

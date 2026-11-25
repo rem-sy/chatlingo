@@ -99,6 +99,16 @@ export const langDef = (code: string): LangDef =>
 
 export const langLabel = (code: string): string => langDef(code).label
 
+const ENGINE_NAMES: Record<string, string> = {
+  llm: '大模型',
+  openai: '大模型',
+  deepl: 'DeepL',
+  aliyun: '阿里云',
+  tencent: '腾讯云',
+}
+
+export const engineName = (id: string): string => ENGINE_NAMES[id.toLowerCase()] ?? id
+
 /** 各渠道支持的目标语言（与 Rust 端 supports_target 保持一致；llm 全量支持） */
 export const SUPPORTED_LANGS: Record<'llm' | 'deepl' | 'aliyun', string[]> = {
   llm: LANG_CATALOG.map((l) => l.code),
