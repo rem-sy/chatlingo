@@ -8,7 +8,8 @@ html, body { background: transparent; }
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 13px;
-  background: var(--float-bg);
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  backdrop-filter: blur(10px);
 }
 .quickbar-head, .toolbar { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
 .quickbar-head { min-height: 39px; cursor: move; }
@@ -19,7 +20,7 @@ html, body { background: transparent; }
   font-size: 14px;
   line-height: 1.2;
 }
-.shortcuts { display: flex; flex: 1; justify-content: flex-end; align-items: center; gap: 6px; color: var(--text-faint); font-size: 11px; }
+.shortcuts { display: flex; flex: 1; justify-content: flex-end; align-items: center; gap: 6px; color: var(--text); font-size: 11px; }
 .shortcuts span { margin-right: 4px; }
 button.close { width: 30px; padding: 0; font-size: 18px; line-height: 1; }
 
@@ -73,7 +74,7 @@ button.close { width: 30px; padding: 0; font-size: 18px; line-height: 1; }
   border-top: 1px solid var(--border-soft);
   cursor: move;
 }
-.language-label, .status { color: var(--text-dim); font-size: 12px; }
+.language-label, .status { color: var(--text); font-size: 12px; }
 .toolbar select { width: 110px; min-height: 31px; padding: 3px 7px; font-size: 12px; }
 .status { flex: 1; text-align: right; }
 .submit { min-height: 31px; min-width: 77px; }
