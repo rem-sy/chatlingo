@@ -835,8 +835,8 @@ fn spawn_updater_silent_check(app: AppHandle) {
 /// （窗口可能刚懒建，事件延迟发送等前端 listener 就绪）
 #[tauri::command]
 fn check_update(app: AppHandle) {
-    open_settings(app.clone());
     tauri::async_runtime::spawn(async move {
+        open_settings(app.clone()).await;
         tokio::time::sleep(std::time::Duration::from_millis(800)).await;
         if let Some(win) = app.get_webview_window(SETTINGS) {
             let _ = win.emit("updater-check", ());
@@ -945,7 +945,7 @@ fn hide_panel(app: AppHandle) {
 }
 
 #[tauri::command]
-fn open_settings(app: AppHandle) {
+async fn open_settings(app: AppHandle) {
     open_util_window(&app, SETTINGS, "ChatLingo 设置", "settings.html", 760.0, 720.0);
 }
 
@@ -963,7 +963,7 @@ fn history_clear(app: AppHandle) {
 }
 
 #[tauri::command]
-fn open_history(app: AppHandle) {
+async fn open_history(app: AppHandle) {
     open_util_window(&app, "history", "ChatLingo 翻译历史", "history.html", 560.0, 640.0);
 }
 
@@ -1017,7 +1017,7 @@ fn glossary_export(app: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn open_glossary(app: AppHandle) {
+async fn open_glossary(app: AppHandle) {
     open_util_window(&app, "glossary", "ChatLingo 术语库", "glossary.html", 640.0, 620.0);
 }
 
@@ -1480,9 +1480,15 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quick" => show_quickbar(app),
             "check_update" => check_update(app.clone()),
-            "glossary" => open_glossary(app.clone()),
-            "history" => open_history(app.clone()),
-            "settings" => open_settings(app.clone()),
+            "glossary" => {
+                tauri::async_runtime::spawn(open_glossary(app.clone()));
+            }
+            "history" => {
+                tauri::async_runtime::spawn(open_history(app.clone()));
+            }
+            "settings" => {
+                tauri::async_runtime::spawn(open_settings(app.clone()));
+            }
             "quit" => app.exit(0),
             _ => {}
         })
@@ -1517,7 +1523,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // 二次启动：唤起设置窗口提示已有实例在运行（懒建兜底）
-            open_settings(app.clone());
+            tauri::async_runtime::spawn(open_settings(app.clone()));
         }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
